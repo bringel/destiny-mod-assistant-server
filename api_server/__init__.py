@@ -5,6 +5,8 @@ from flask.json import jsonify
 from requests_oauthlib import OAuth2Session
 from sqlalchemy import create_engine, text
 
+from api_server.repositories.user_repository import UserRepository
+
 
 def create_app():
     app = Flask(__name__)
@@ -19,7 +21,7 @@ def create_app():
         )
 
         session["oauth_state"] = state
-        print(state)
+
         return redirect(authorization_url)
 
     @app.route("/callback")
@@ -40,22 +42,20 @@ def create_app():
             headers={"X-API-KEY": os.environ.get("BUNGIE_API_KEY")},
         ).json()
 
-        print(user)
         profile = user["Response"]["profiles"][0]
         membership_type = profile["membershipType"]
         membership_id = profile["membershipId"]
         display_name = f"{profile['bungieGlobalDisplayName']}#{profile['bungieGlobalDisplayNameCode']}"
 
-        engine = create_engine(os.environ.get("DB_CONNECTION_STRING"))
-        with engine.begin() as connection:
-            connection.execute(
-                text(
-                    "INSERT INTO users (destiny_membership_type, destiny_membership_id, display_name) VALUES (:membership_type, :membership_id, :display_name) ON CONFLICT DO NOTHING;"
-                ),
-                membership_type=membership_type,
-                membership_id=membership_id,
-                display_name=display_name,
+        user_repository = UserRepository()
+        user = user_repository.get_user(membership_type, membership_id)
+
+        if user is None:
+            user = user_repository.create_user(
+                membership_type, membership_id, display_name
             )
+        else:
+            user = dict(user)
 
         return jsonify(user)
 

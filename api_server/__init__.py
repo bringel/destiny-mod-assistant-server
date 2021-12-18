@@ -5,6 +5,8 @@ from flask.json import jsonify
 from requests_oauthlib import OAuth2Session
 
 from api_server.database import db
+from api_server.destiny_api import DestinyAPI
+from api_server.models import User
 from api_server.repositories.user_repository import UserRepository
 
 
@@ -18,10 +20,8 @@ def create_app():
 
     @app.route("/login")
     def login():
-        bungie = OAuth2Session(os.environ.get("OAUTH_CLIENT_ID"))
-        authorization_url, state = bungie.authorization_url(
-            os.environ.get("BUNGIE_AUTHORIZATION_URL")
-        )
+        destiny_api = DestinyAPI()
+        authorization_url, state = destiny_api.get_authorization_url()
 
         session["oauth_state"] = state
 
@@ -29,37 +29,21 @@ def create_app():
 
     @app.route("/callback")
     def callback():
-        bungie = OAuth2Session(
-            os.environ.get("OAUTH_CLIENT_ID"), state=session["oauth_state"]
-        )
-        token = bungie.fetch_token(
-            os.environ.get("BUNGIE_TOKEN_URL"),
-            client_secret=os.environ.get("OAUTH_CLIENT_SECRET"),
-            authorization_response=request.url,
-        )
+        destiny_api = DestinyAPI()
+        token = destiny_api.fetch_token(request.url)
 
         session["oauth_token"] = token
 
-        user = bungie.get(
-            f"https://bungie.net/Platform/Destiny2/254/Profile/{session['oauth_token']['membership_id']}/LinkedProfiles/",
-            headers={"X-API-KEY": os.environ.get("BUNGIE_API_KEY")},
-        ).json()
-
-        profile = user["Response"]["profiles"][0]
-        membership_type = profile["membershipType"]
-        membership_id = profile["membershipId"]
-        display_name = f"{profile['bungieGlobalDisplayName']}#{profile['bungieGlobalDisplayNameCode']}"
+        user = destiny_api.get_bungie_user_linked_profiles()
 
         user_repository = UserRepository()
-        user = user_repository.get_user(membership_type, membership_id)
+        existing_user = user_repository.get_user(
+            user.destiny_membership_type, user.destiny_membership_id
+        )
 
-        if user is None:
-            user = user_repository.create_user(
-                membership_type, membership_id, display_name
-            )
-        else:
-            user = dict(user)
+        if existing_user is None:
+            user_repository.create_user(user)
 
-        return jsonify(user)
+        return redirect(os.environ.get("APP_URL"))
 
     return app

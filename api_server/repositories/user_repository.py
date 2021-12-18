@@ -1,32 +1,35 @@
 import os
 
-from sqlalchemy import create_engine, text
+from api_server.database import db
+from api_server.tables import users_table
+from sqlalchemy import insert, select
 
 
 class UserRepository:
-    def __init__(self):
-        self.engine = create_engine(os.environ.get("DB_CONNECTION_STRING"))
-
     def get_user(self, destiny_membership_type, destiny_membership_id):
-        with self.engine.begin() as connection:
-            result = connection.execute(
-                text(
-                    "SELECT * from users WHERE users.destiny_membership_type = :type AND users.destiny_membership_id = :id LIMIT 1;"
-                ),
-                type=destiny_membership_type,
-                id=destiny_membership_id,
+        with db.engine.begin() as connection:
+            statement = select(users_table).where(
+                users_table.c.destiny_membership_type == destiny_membership_type,
+                users_table.c.destiny_membership_id == destiny_membership_id,
             )
+
+            result = connection.execute(statement)
             return result.one_or_none()
 
     def create_user(self, destiny_membership_type, destiny_membership_id, display_name):
-        with self.engine.begin() as connection:
+        with db.engine.begin() as connection:
+            statement = insert(users_table).returning(
+                users_table.c.destiny_membership_type,
+                users_table.c.destiny_membership_id,
+                users_table.c.display_name,
+            )
             res = connection.execute(
-                text(
-                    "INSERT INTO users (destiny_membership_type, destiny_membership_id, display_name) VALUES (:type, :id, :name) RETURNING *"
-                ),
-                type=destiny_membership_type,
-                id=destiny_membership_id,
-                name=display_name,
+                statement,
+                {
+                    "destiny_membership_type": destiny_membership_type,
+                    "destiny_membership_id": destiny_membership_id,
+                    "display_name": display_name,
+                },
             )
 
-            return dict(res.one_or_none())
+            return res.one_or_none()

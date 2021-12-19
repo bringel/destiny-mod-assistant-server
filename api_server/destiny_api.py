@@ -14,6 +14,7 @@ class DestinyAPI:
     ):
         self.client_id = client_id or os.environ.get("OAUTH_CLIENT_ID")
         self.client_secret = client_secret or os.environ.get("OAUTH_CLIENT_SECRET")
+
         self.token = oauth_token or session.get("oauth_token")
         self.oauth_state = oauth_state or session.get("oauth_state")
 
@@ -41,11 +42,13 @@ class DestinyAPI:
         )
 
     def fetch_token(self, authorization_url):
-        return self.bungie_client.fetch_token(
+        token = self.bungie_client.fetch_token(
             os.environ.get("BUNGIE_TOKEN_URL"),
             client_secret=self.client_secret,
             authorization_response=authorization_url,
         )
+        self.token = token
+        return token
 
     def get_bungie_user_linked_profiles(self):
         res = self.bungie_client.get(

@@ -39,6 +39,9 @@ def create_app():
 
         user = destiny_api.get_bungie_user_linked_profiles()
 
+        session["destiny_membership_type"] = user.destiny_membership_type
+        session["destiny_membership_id"] = user.destiny_membership_id
+
         user_repository = UserRepository()
         existing_user = user_repository.get_user(
             user.destiny_membership_type, user.destiny_membership_id
@@ -48,5 +51,16 @@ def create_app():
             user_repository.create_user(user)
 
         return redirect(os.environ.get("APP_URL"))
+
+    @app.route("/user")
+    def get_user():
+        user_repository = UserRepository()
+
+        membership_type = session["destiny_membership_type"]
+        membership_id = session["destiny_membership_id"]
+
+        user = user_repository.get_user(membership_type, membership_id)
+
+        return jsonify(user)
 
     return app

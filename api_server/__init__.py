@@ -2,6 +2,7 @@ import os
 
 from flask import Flask, redirect, request, session
 from flask.json import jsonify
+from flask_cors import CORS
 from flask_session import Session
 
 from api_server.database import db
@@ -9,17 +10,21 @@ from api_server.destiny_api import DestinyAPI
 from api_server.models import User
 from api_server.repositories.user_repository import UserRepository
 
+sess = Session()
+
 
 def create_app():
 
     app = Flask(__name__)
-
     app.secret_key = os.environ.get("SECRET_KEY")
-    app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
-    db.init_app(app)
-    app.config["SESSION_TYPE"] = "sqlalchemy"
-    app.config["SESSION_SQLALCHEMY"] = db
-    Session(app)
+    app.config.update(
+        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+    )
+    CORS(app, origins=["http://localhost:3000"], supports_credentials=True)
+    app.config["SESSION_TYPE"] = "redis"
+    sess.init_app(app)
 
     @app.route("/login")
     def login():
@@ -56,11 +61,13 @@ def create_app():
     def get_user():
         user_repository = UserRepository()
 
-        membership_type = session["destiny_membership_type"]
-        membership_id = session["destiny_membership_id"]
+        membership_type = session.get("destiny_membership_type")
+        membership_id = session.get("destiny_membership_id")
 
         user = user_repository.get_user(membership_type, membership_id)
 
-        return jsonify(user)
+        res = jsonify(user)
+
+        return res
 
     return app

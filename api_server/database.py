@@ -1,3 +1,8 @@
-from flask_sqlalchemy import SQLAlchemy
+import os
 
-db = SQLAlchemy()
+from sqlalchemy import create_engine
+from sqlalchemy.sql.schema import MetaData
+
+db = create_engine(os.environ.get("DATABASE_URL"))
+
+metadata = MetaData(bind=db)

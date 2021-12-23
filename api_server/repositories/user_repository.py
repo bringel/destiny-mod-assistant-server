@@ -8,17 +8,25 @@ from sqlalchemy import insert, select
 
 class UserRepository:
     def get_user(self, destiny_membership_type, destiny_membership_id):
-        with db.engine.begin() as connection:
+        with db.begin() as connection:
             statement = select(users_table).where(
                 users_table.c.destiny_membership_type == destiny_membership_type,
                 users_table.c.destiny_membership_id == destiny_membership_id,
             )
 
-            result = connection.execute(statement)
-            return result.one_or_none()
+            result = connection.execute(statement).one_or_none()
+
+            if result is None:
+                return None
+            else:
+                return User(
+                    result.destiny_membership_type,
+                    result.destiny_membership_id,
+                    result.display_name,
+                )
 
     def create_user(self, user: User):
-        with db.engine.begin() as connection:
+        with db.begin() as connection:
             statement = insert(users_table).returning(
                 users_table.c.destiny_membership_type,
                 users_table.c.destiny_membership_id,

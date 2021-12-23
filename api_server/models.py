@@ -15,3 +15,11 @@ class User:
         display_name = f"{profile['bungieGlobalDisplayName']}#{profile['bungieGlobalDisplayNameCode']}"
 
         return User(membership_type, membership_id, display_name)
+
+    @classmethod
+    def from_db(self, row):
+        return User(
+            row["destiny_membership_type"],
+            row["destiny_membership_id"],
+            row["display_name"],
+        )

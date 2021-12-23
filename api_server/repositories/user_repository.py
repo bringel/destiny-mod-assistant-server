@@ -19,11 +19,7 @@ class UserRepository:
             if result is None:
                 return None
             else:
-                return User(
-                    result.destiny_membership_type,
-                    result.destiny_membership_id,
-                    result.display_name,
-                )
+                return User.from_db(result)
 
     def create_user(self, user: User):
         with db.begin() as connection:

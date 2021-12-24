@@ -7,6 +7,7 @@ from flask_session import Session
 
 from api_server.database import db
 from api_server.destiny_api import DestinyAPI
+from api_server.destiny_manifest import DestinyManifest
 from api_server.models import User
 from api_server.repositories.user_repository import UserRepository
 

@@ -107,22 +107,25 @@ class DestinyAPI:
 
         manifest = DestinyManifest()
         race_defs = manifest.get_table("DestinyRaceDefinition")
-        gender_defs = manifest.get_table("DestinyGenderDefinition")
+
         class_defs = manifest.get_table("DestinyClassDefinition")
 
-        characters = {}
+        characters = []
         for character_id, character_data in res["Response"]["characters"][
             "data"
         ].items():
             race = race_defs.get(str(character_data.get("raceHash")))
             character_class = class_defs.get(str(character_data.get("classHash")))
-            characters[character_id] = {
-                "class": character_class["displayProperties"]["name"],
-                "genderAndRaceDescription": race["genderedRaceNamesByGenderHash"][
-                    str(character_data.get("genderHash"))
-                ],
-                "dateLastPlayed": character_data.get("dateLastPlayed"),
-                "light": character_data.get("light"),
-                "emblemBackgroundPath": character_data.get("emblemBackgroundPath"),
-            }
+            characters.append(
+                {
+                    "characterID": character_id,
+                    "class": character_class["displayProperties"]["name"],
+                    "genderAndRaceDescription": race["genderedRaceNamesByGenderHash"][
+                        str(character_data.get("genderHash"))
+                    ],
+                    "dateLastPlayed": character_data.get("dateLastPlayed"),
+                    "light": character_data.get("light"),
+                    "emblemBackgroundPath": character_data.get("emblemBackgroundPath"),
+                }
+            )
         return characters

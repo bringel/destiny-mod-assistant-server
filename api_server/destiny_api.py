@@ -5,7 +5,7 @@ from flask import session
 from requests_oauthlib import OAuth2Session
 
 from api_server.destiny_manifest import DestinyManifest
-from api_server.models import User
+from api_server.models import Character, User
 
 headers = {"X-API-KEY": os.environ.get("BUNGIE_API_KEY")}
 
@@ -111,21 +111,8 @@ class DestinyAPI:
         class_defs = manifest.get_table("DestinyClassDefinition")
 
         characters = []
-        for character_id, character_data in res["Response"]["characters"][
-            "data"
-        ].items():
-            race = race_defs.get(str(character_data.get("raceHash")))
-            character_class = class_defs.get(str(character_data.get("classHash")))
+        for character_data in res["Response"]["characters"]["data"].values():
             characters.append(
-                {
-                    "characterID": character_id,
-                    "class": character_class["displayProperties"]["name"],
-                    "genderAndRaceDescription": race["genderedRaceNamesByGenderHash"][
-                        str(character_data.get("genderHash"))
-                    ],
-                    "dateLastPlayed": character_data.get("dateLastPlayed"),
-                    "light": character_data.get("light"),
-                    "emblemBackgroundPath": character_data.get("emblemBackgroundPath"),
-                }
+                Character.from_json(character_data, race_defs, class_defs)
             )
         return characters

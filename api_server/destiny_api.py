@@ -47,63 +47,66 @@ class DestinyComponentType(Enum):
     StringVariables = 1200
 
 
-DESTINY_BASE_URL = "https://bungie.net/Platform/Destiny2"
+DESTINY_BASE_URL = "https://www.bungie.net/Platform/Destiny2"
 
 
 class DestinyAPI:
-    def __init__(self, *, client_id=None, client_secret=None):
-        self.client_id = client_id or os.environ.get("OAUTH_CLIENT_ID")
-        self.client_secret = client_secret or os.environ.get("OAUTH_CLIENT_SECRET")
-
+    def get_client(self):
         token = session.get("oauth_token")
-        state = session.get("oauth_state")
-        auto_refresh_extra = {
-            "client_id": self.client_id,
-            "client_secret": self.client_secret,
-        }
 
-        def token_updater(token):
-            session["oauth_token"] = token
+        client_id = os.environ.get("OAUTH_CLIENT_ID")
+        client_secret = os.environ.get("OAUTH_CLIENT_SECRET")
 
-        self.bungie_client = OAuth2Session(
-            self.client_id,
-            token=token,
-            state=state,
-            auto_refresh_url=os.environ.get("BUNGIE_TOKEN_URL"),
-            auto_refresh_kwargs=auto_refresh_extra,
-            token_updater=token_updater,
-        )
-        self.bungie_client.headers.update(headers)
+        if token is not None:
 
-    def get_authorization_url(self):
-        return self.bungie_client.authorization_url(
-            os.environ.get("BUNGIE_AUTHORIZATION_URL")
-        )
+            auto_refresh_extra = {
+                "client_id": client_id,
+                "client_secret": client_secret,
+            }
 
-    def fetch_token(self, authorization_url):
-        token = self.bungie_client.fetch_token(
-            os.environ.get("BUNGIE_TOKEN_URL"),
-            client_secret=self.client_secret,
-            authorization_response=authorization_url,
-        )
-        return token
+            def token_updater(token):
+                session["oauth_token"] = token
+
+            c = OAuth2Session(
+                client_id,
+                token=token,
+                auto_refresh_url=os.environ.get("BUNGIE_TOKEN_URL"),
+                auto_refresh_kwargs=auto_refresh_extra,
+                token_updater=token_updater,
+            )
+            c.headers.update(headers)
+            return c
+        else:
+            state = session.get("oauth_state")
+            client_id = os.environ.get("OAUTH_CLIENT_ID")
+            c = OAuth2Session(client_id, state=state)
+            c.headers.update(headers)
+            return c
 
     def get_bungie_user_linked_profiles(self):
         token = session.get("oauth_token")
-        res = self.bungie_client.get(
-            f"{DESTINY_BASE_URL}/254/Profile/{token['membership_id']}/LinkedProfiles/"
-        ).json()
+        res = (
+            self.get_client()
+            .get(
+                f"{DESTINY_BASE_URL}/254/Profile/{token['membership_id']}/LinkedProfiles/"
+            )
+            .json()
+        )
 
         return User.from_json(res)
 
     def get_characters(self):
 
-        membership_type = session.get("destiny_membership_type")
-        membership_id = session.get("destiny_membership_id")
+        membership_type = session.get("destinyMembershipType")
+        membership_id = session.get("destinyMembershipID")
 
-        res = self.bungie_client.get(
-            f"{DESTINY_BASE_URL}/{membership_type}/Profile/{membership_id}/?components={DestinyComponentType.Characters.value}"
-        ).json()
+        res = (
+            self.get_client()
+            .get(
+                f"{DESTINY_BASE_URL}/{membership_type}/Profile/{membership_id}/?components={DestinyComponentType.Characters.value}"
+            )
+            .json()
+        )
 
         manifest = DestinyManifest()
         race_defs = manifest.get_table("DestinyRaceDefinition")

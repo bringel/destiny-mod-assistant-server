@@ -5,7 +5,7 @@ from flask import session
 from requests_oauthlib import OAuth2Session
 
 from api_server.destiny_manifest import DestinyManifest
-from api_server.models import Character, User
+from api_server.models import ArmorPiece, Character, User
 
 headers = {"X-API-KEY": os.environ.get("BUNGIE_API_KEY")}
 
@@ -48,6 +48,8 @@ class DestinyComponentType(Enum):
 
 
 DESTINY_BASE_URL = "https://www.bungie.net/Platform/Destiny2"
+
+ARMOR_ITEM_BUCKET_HASHES = [3448274439, 3551918588, 14239492, 20886954, 1585787867]
 
 
 class DestinyAPI:
@@ -119,3 +121,39 @@ class DestinyAPI:
                 Character.from_json(character_data, race_defs, class_defs)
             )
         return characters
+
+    def get_character(self, character_id):
+
+        membership_type = session.get("destinyMembershipType")
+        membership_id = session.get("destinyMembershipID")
+
+        components = [
+            DestinyComponentType.Characters,
+            DestinyComponentType.CharacterInventories,
+            DestinyComponentType.CharacterEquipment,
+        ]
+
+        res = (
+            self.get_client()
+            .get(
+                f"{DESTINY_BASE_URL}/{membership_type}/Profile/{membership_id}/Character/{character_id}?components={','.join([str(c.value) for c in components])}"
+            )
+            .json()
+        )
+
+        manifest = DestinyManifest()
+        inventory_item_defs = manifest.get_table("DestinyInventoryItemDefinition")
+        race_defs = manifest.get_table("DestinyRaceDefinition")
+        class_defs = manifest.get_table("DestinyClassDefinition")
+
+        character_res = res["Response"]["character"]["data"]
+        equipment_res = res["Response"]["equipment"]["data"]["items"]
+
+        armor = [
+            ArmorPiece.from_json(e, inventory_item_defs)
+            for e in equipment_res
+            if e["bucketHash"] in ARMOR_ITEM_BUCKET_HASHES
+        ]
+        character = Character.from_json(character_res, race_defs, class_defs)
+
+        return {"character": character, "armor": armor}

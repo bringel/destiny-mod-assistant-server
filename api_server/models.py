@@ -53,3 +53,24 @@ class Character:
             light=response.get("light"),
             emblemBackgroundPath=response.get("emblemBackgroundPath"),
         )
+
+
+@dataclass
+class ArmorPiece:
+    itemHash: int
+    itemInstanceID: str
+    bucketHash: int
+    name: str
+    iconPath: str
+
+    @classmethod
+    def from_json(self, response, inventory_item_defs):
+        item = inventory_item_defs[str(response["itemHash"])]
+
+        return ArmorPiece(
+            itemHash=response["itemHash"],
+            itemInstanceID=response["itemInstanceId"],
+            bucketHash=response["bucketHash"],
+            name=item["displayProperties"]["name"],
+            iconPath=item["displayProperties"]["icon"],
+        )

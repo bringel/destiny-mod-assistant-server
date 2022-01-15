@@ -5,7 +5,12 @@ from flask import session
 from requests_oauthlib import OAuth2Session
 
 from api_server.destiny_manifest import DestinyManifest
-from api_server.models import ArmorPiece, Character, User
+from api_server.models import (
+    ArmorPiece,
+    Character,
+    User,
+    bucket_hash_armor_type_mapping,
+)
 
 headers = {"X-API-KEY": os.environ.get("BUNGIE_API_KEY")}
 
@@ -48,8 +53,6 @@ class DestinyComponentType(Enum):
 
 
 DESTINY_BASE_URL = "https://www.bungie.net/Platform/Destiny2"
-
-ARMOR_ITEM_BUCKET_HASHES = [3448274439, 3551918588, 14239492, 20886954, 1585787867]
 
 
 class DestinyAPI:
@@ -131,6 +134,8 @@ class DestinyAPI:
             DestinyComponentType.Characters,
             DestinyComponentType.CharacterInventories,
             DestinyComponentType.CharacterEquipment,
+            DestinyComponentType.ItemCommonData,
+            DestinyComponentType.ItemInstances,
         ]
 
         res = (
@@ -148,12 +153,20 @@ class DestinyAPI:
 
         character_res = res["Response"]["character"]["data"]
         equipment_res = res["Response"]["equipment"]["data"]["items"]
+        instances = res["Response"]["itemComponents"]["instances"]["data"]
 
-        armor = [
-            ArmorPiece.from_json(e, inventory_item_defs)
+        armor_responses = [
+            e
             for e in equipment_res
-            if e["bucketHash"] in ARMOR_ITEM_BUCKET_HASHES
+            if e["bucketHash"] in bucket_hash_armor_type_mapping.keys()
         ]
+
+        armor = []
+
+        for a in armor_responses:
+            instance = instances.get(a["itemInstanceId"])
+            armor.append(ArmorPiece.from_json(a, instance, inventory_item_defs))
+
         character = Character.from_json(character_res, race_defs, class_defs)
 
         return {"character": character, "armor": armor}

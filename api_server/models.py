@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 
 
 @dataclass
@@ -51,26 +52,58 @@ class Character:
             ],
             dateLastPlayed=response.get("dateLastPlayed"),
             light=response.get("light"),
-            emblemBackgroundPath=response.get("emblemBackgroundPath"),
+            emblemBackgroundPath=f'https://bungie.net{response.get("emblemBackgroundPath")}',
         )
+
+
+class ArmorType(int, Enum):
+    Helmet = 1
+    Arms = 2
+    Chest = 3
+    Legs = 4
+    ClassItem = 5
+
+
+class EnergyType(int, Enum):
+    Arc = 1
+    Solar = 2
+    Void = 3
+    Stasis = 6
+
+
+bucket_hash_armor_type_mapping = {
+    3448274439: ArmorType.Helmet,
+    3551918588: ArmorType.Arms,
+    14239492: ArmorType.Chest,
+    20886954: ArmorType.Legs,
+    1585787867: ArmorType.ClassItem,
+}
 
 
 @dataclass
 class ArmorPiece:
     itemHash: int
     itemInstanceID: str
+    itemType: ArmorType
     bucketHash: int
     name: str
     iconPath: str
+    energyType: EnergyType
+    energyCapacity: int
+    energyUsed: int
 
     @classmethod
-    def from_json(self, response, inventory_item_defs):
+    def from_json(self, response, instance, inventory_item_defs):
         item = inventory_item_defs[str(response["itemHash"])]
 
         return ArmorPiece(
             itemHash=response["itemHash"],
             itemInstanceID=response["itemInstanceId"],
+            itemType=bucket_hash_armor_type_mapping.get(response["bucketHash"]),
             bucketHash=response["bucketHash"],
             name=item["displayProperties"]["name"],
-            iconPath=item["displayProperties"]["icon"],
+            iconPath=f'https://bungie.net{item["displayProperties"]["icon"]}',
+            energyType=EnergyType(instance["energy"]["energyType"]),
+            energyCapacity=instance["energy"]["energyCapacity"],
+            energyUsed=instance["energy"]["energyUsed"],
         )

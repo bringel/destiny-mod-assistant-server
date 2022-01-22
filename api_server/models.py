@@ -56,6 +56,9 @@ class Character:
         )
 
 
+ARMOR_MOD_CATEGORY = 590099826
+
+
 class ArmorType(int, Enum):
     Helmet = 1
     Arms = 2
@@ -91,10 +94,33 @@ class ArmorPiece:
     energyType: EnergyType
     energyCapacity: int
     energyUsed: int
+    sockets: dict
 
     @classmethod
     def from_json(self, response, instance, inventory_item_defs):
         item = inventory_item_defs[str(response["itemHash"])]
+        armor_mod_indexes = None
+        for category in item["sockets"]["socketCategories"]:
+            if category["socketCategoryHash"] == ARMOR_MOD_CATEGORY:
+                armor_mod_indexes = category["socketIndexes"]
+
+        sockets = []
+        if armor_mod_indexes:
+            sockets = [
+                item
+                for (index, item) in enumerate(item["sockets"]["socketEntries"])
+                if index in armor_mod_indexes
+            ]
+        socket_details = []
+        for socket in sockets:
+            socket_item = inventory_item_defs[str(socket["singleInitialItemHash"])]
+            s = {
+                "socketItemTypeHash": socket["singleInitialItemHash"],
+                "displayName": socket_item["itemTypeDisplayName"],
+                "iconPath": f"https://bungie.net{socket_item['displayProperties']['icon']}",
+                "plugSetHash": socket["reusablePlugSetHash"],
+            }
+            socket_details.append(s)
 
         return ArmorPiece(
             itemHash=response["itemHash"],
@@ -106,4 +132,5 @@ class ArmorPiece:
             energyType=EnergyType(instance["energy"]["energyType"]),
             energyCapacity=instance["energy"]["energyCapacity"],
             energyUsed=instance["energy"]["energyUsed"],
+            sockets=socket_details,
         )

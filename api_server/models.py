@@ -68,6 +68,7 @@ class ArmorType(int, Enum):
 
 
 class EnergyType(int, Enum):
+    Any = 0
     Arc = 1
     Solar = 2
     Void = 3
@@ -80,6 +81,15 @@ bucket_hash_armor_type_mapping = {
     14239492: ArmorType.Chest,
     20886954: ArmorType.Legs,
     1585787867: ArmorType.ClassItem,
+}
+
+stat_type_hash_energy_type_mapping = {
+    2399985800: EnergyType.Void,
+    998798867: EnergyType.Stasis,
+    3344745325: EnergyType.Solar,
+    3578062600: EnergyType.Any,
+    3779394102: EnergyType.Arc,
+    3950461274: EnergyType.Stasis,
 }
 
 
@@ -128,10 +138,21 @@ class ArmorPiece:
                     active_mod_item_def = inventory_item_defs[
                         str(item_component_socket["plugHash"])
                     ]
+                    energy_stat = [
+                        m
+                        for m in active_mod_item_def["investmentStats"]
+                        if m["statTypeHash"]
+                        in stat_type_hash_energy_type_mapping.keys()
+                    ][0]
+
                     s["currentPlug"] = {
                         "plugHash": item_component_socket["plugHash"],
                         "displayName": active_mod_item_def["displayProperties"]["name"],
                         "iconPath": f"https://bungie.net{active_mod_item_def['displayProperties']['icon']}",
+                        "energyCost": energy_stat["value"],
+                        "energyType": stat_type_hash_energy_type_mapping[
+                            energy_stat["statTypeHash"]
+                        ],
                     }
                 else:
                     s["currentPlug"] = None

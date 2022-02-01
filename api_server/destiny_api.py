@@ -136,6 +136,7 @@ class DestinyAPI:
             DestinyComponentType.CharacterEquipment,
             DestinyComponentType.ItemCommonData,
             DestinyComponentType.ItemInstances,
+            DestinyComponentType.ItemSockets,
         ]
 
         res = (
@@ -154,6 +155,7 @@ class DestinyAPI:
         character_res = res["Response"]["character"]["data"]
         equipment_res = res["Response"]["equipment"]["data"]["items"]
         instances = res["Response"]["itemComponents"]["instances"]["data"]
+        sockets = res["Response"]["itemComponents"]["sockets"]["data"]
 
         armor_responses = [
             e
@@ -165,7 +167,10 @@ class DestinyAPI:
 
         for a in armor_responses:
             instance = instances.get(a["itemInstanceId"])
-            armor.append(ArmorPiece.from_json(a, instance, inventory_item_defs))
+            socket_response = sockets[a["itemInstanceId"]]["sockets"]
+            armor.append(
+                ArmorPiece.from_json(a, instance, socket_response, inventory_item_defs)
+            )
 
         character = Character.from_json(character_res, race_defs, class_defs)
 

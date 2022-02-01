@@ -25,7 +25,11 @@ def create_app():
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
     )
-    CORS(app, origins=["http://localhost:3000"], supports_credentials=True)
+    CORS(
+        app,
+        origins=["http://localhost:3000", "http://localhost:3001"],
+        supports_credentials=True,
+    )
     app.config["SESSION_TYPE"] = "redis"
     sess.init_app(app)
 

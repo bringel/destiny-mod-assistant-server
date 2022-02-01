@@ -97,7 +97,7 @@ class ArmorPiece:
     sockets: dict
 
     @classmethod
-    def from_json(self, response, instance, inventory_item_defs):
+    def from_json(self, response, instance, socket_response, inventory_item_defs):
         item = inventory_item_defs[str(response["itemHash"])]
         armor_mod_indexes = None
         for category in item["sockets"]["socketCategories"]:
@@ -106,21 +106,36 @@ class ArmorPiece:
 
         sockets = []
         if armor_mod_indexes:
-            sockets = [
-                item
-                for (index, item) in enumerate(item["sockets"]["socketEntries"])
-                if index in armor_mod_indexes
-            ]
-        socket_details = []
-        for socket in sockets:
-            socket_item = inventory_item_defs[str(socket["singleInitialItemHash"])]
-            s = {
-                "socketItemTypeHash": socket["singleInitialItemHash"],
-                "displayName": socket_item["itemTypeDisplayName"],
-                "iconPath": f"https://bungie.net{socket_item['displayProperties']['icon']}",
-                "plugSetHash": socket["reusablePlugSetHash"],
-            }
-            socket_details.append(s)
+            for index in armor_mod_indexes:
+                armor_item_definition_socket = item["sockets"]["socketEntries"][index]
+                item_component_socket = socket_response[index]
+                socket_item_initial_mod_def = inventory_item_defs[
+                    str(armor_item_definition_socket["singleInitialItemHash"])
+                ]
+
+                s = {
+                    "socketItemTypeHash": armor_item_definition_socket[
+                        "singleInitialItemHash"
+                    ],
+                    "displayName": socket_item_initial_mod_def["itemTypeDisplayName"],
+                    "iconPath": f"https://bungie.net{socket_item_initial_mod_def['displayProperties']['icon']}",
+                    "plugSetHash": armor_item_definition_socket["reusablePlugSetHash"],
+                }
+                if (
+                    item_component_socket["plugHash"]
+                    != armor_item_definition_socket["singleInitialItemHash"]
+                ):
+                    active_mod_item_def = inventory_item_defs[
+                        str(item_component_socket["plugHash"])
+                    ]
+                    s["currentPlug"] = {
+                        "plugHash": item_component_socket["plugHash"],
+                        "displayName": active_mod_item_def["displayProperties"]["name"],
+                        "iconPath": f"https://bungie.net{active_mod_item_def['displayProperties']['icon']}",
+                    }
+                else:
+                    s["currentPlug"] = None
+                sockets.append(s)
 
         return ArmorPiece(
             itemHash=response["itemHash"],
@@ -132,5 +147,5 @@ class ArmorPiece:
             energyType=EnergyType(instance["energy"]["energyType"]),
             energyCapacity=instance["energy"]["energyCapacity"],
             energyUsed=instance["energy"]["energyUsed"],
-            sockets=socket_details,
+            sockets=sockets,
         )

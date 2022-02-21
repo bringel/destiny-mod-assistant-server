@@ -8,8 +8,10 @@ from api_server.destiny_manifest import DestinyManifest
 from api_server.models import (
     ArmorPiece,
     Character,
+    TreeStyleSubclass,
     User,
     bucket_hash_armor_type_mapping,
+    subclass_bucket_hash,
 )
 
 headers = {"X-API-KEY": os.environ.get("BUNGIE_API_KEY")}
@@ -134,9 +136,9 @@ class DestinyAPI:
             DestinyComponentType.Characters,
             DestinyComponentType.CharacterInventories,
             DestinyComponentType.CharacterEquipment,
-            DestinyComponentType.ItemCommonData,
             DestinyComponentType.ItemInstances,
             DestinyComponentType.ItemSockets,
+            DestinyComponentType.ItemTalentGrids,
         ]
 
         res = (
@@ -151,11 +153,13 @@ class DestinyAPI:
         inventory_item_defs = manifest.get_table("DestinyInventoryItemDefinition")
         race_defs = manifest.get_table("DestinyRaceDefinition")
         class_defs = manifest.get_table("DestinyClassDefinition")
+        talent_grid_defs = manifest.get_table("DestinyTalentGridDefinition")
 
         character_res = res["Response"]["character"]["data"]
         equipment_res = res["Response"]["equipment"]["data"]["items"]
         instances = res["Response"]["itemComponents"]["instances"]["data"]
         sockets = res["Response"]["itemComponents"]["sockets"]["data"]
+        talentGrids = res["Response"]["itemComponents"]["talentGrids"]["data"]
 
         armor_responses = [
             e
@@ -172,6 +176,17 @@ class DestinyAPI:
                 ArmorPiece.from_json(a, instance, socket_response, inventory_item_defs)
             )
 
+        equipment_subclass = [
+            e for e in equipment_res if e["bucketHash"] == subclass_bucket_hash
+        ][0]
+
+        subclass = TreeStyleSubclass.from_json(
+            equipment_subclass,
+            talentGrids[str(equipment_subclass["itemInstanceId"])],
+            inventory_item_defs,
+            talent_grid_defs,
+        )
+
         character = Character.from_json(character_res, race_defs, class_defs)
 
-        return {"character": character, "armor": armor}
+        return {"character": character, "armor": armor, "subclass": subclass}

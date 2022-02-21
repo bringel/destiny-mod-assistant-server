@@ -1,5 +1,10 @@
 from dataclasses import dataclass
 from enum import Enum
+from itertools import groupby
+
+
+def full_icon_path(path):
+    return f"https://bungie.net{path}"
 
 
 @dataclass
@@ -75,6 +80,16 @@ class EnergyType(int, Enum):
     Stasis = 6
 
 
+class DamageType(int, Enum):
+    NoDamage = 0
+    Kinetic = 1
+    Arc = 2
+    Solar = 3
+    Void = 4
+    Raid = 5
+    Stasis = 6
+
+
 bucket_hash_armor_type_mapping = {
     3448274439: ArmorType.Helmet,
     3551918588: ArmorType.Arms,
@@ -108,6 +123,7 @@ class ArmorPiece:
 
     @classmethod
     def from_json(self, response, instance, socket_response, inventory_item_defs):
+        # TODO: try to abstract the socket logic to a mixin class so that we can use it for aspect-based subclasses as well
         item = inventory_item_defs[str(response["itemHash"])]
         armor_mod_indexes = None
         for category in item["sockets"]["socketCategories"]:
@@ -169,4 +185,193 @@ class ArmorPiece:
             energyCapacity=instance["energy"]["energyCapacity"],
             energyUsed=instance["energy"]["energyUsed"],
             sockets=sockets,
+        )
+
+
+subclass_bucket_hash = 3284755031
+class_ability_group_hashes = [3874829120, 3874829121]
+movement_group_hashes = [4114106724, 4114106725, 4114106726]
+grenade_group_hashes = [2697262605, 2697262606, 2697262607]
+top_tree_group_hash = 1350529726
+middle_tree_group_hash = 1350529727
+bottom_tree_group_hash = 1350529724
+
+
+@dataclass
+class TreeStyleSubclass:
+    name: str
+    iconPath: str
+    damageType: DamageType
+    itemHash: str
+    activeClassAbility: dict
+    activeMovementAbility: dict
+    activeGrenadeAbility: dict
+    activeTree: dict
+
+    @classmethod
+    def from_json(
+        self,
+        response,
+        talent_grid_response,
+        inventory_item_defs,
+        talent_grid_defs,
+    ):
+        item_def = inventory_item_defs[str(response["itemHash"])]
+        talent_grid = talent_grid_defs[str(item_def["talentGrid"]["talentGridHash"])]
+
+        active_instance_nodes = [
+            n["nodeIndex"] for n in talent_grid_response["nodes"] if n["isActivated"]
+        ]
+        talent_grid_nodes = [
+            n
+            for n in talent_grid["nodes"]
+            if n["nodeIndex"] in active_instance_nodes
+            and (n["row"] >= 0 and n["column"] >= 0)
+        ]
+
+        class_ability_node = [
+            n
+            for n in talent_grid_nodes
+            if n.get("groupHash") in class_ability_group_hashes
+        ][0]
+
+        movement_ability_node = [
+            n for n in talent_grid_nodes if n.get("groupHash") in movement_group_hashes
+        ][0]
+
+        grenade_ability_node = [
+            n for n in talent_grid_nodes if n.get("groupHash") in grenade_group_hashes
+        ][0]
+
+        active_tree_nodes = [
+            n
+            for n in talent_grid_nodes
+            if n.get("groupHash")
+            in [top_tree_group_hash, middle_tree_group_hash, bottom_tree_group_hash]
+        ]
+
+        def get_step_display_properties(node):
+            return node["steps"][0]["displayProperties"]
+
+        active_class_ability = {
+            "name": get_step_display_properties(class_ability_node)["name"],
+            "description": get_step_display_properties(class_ability_node)[
+                "description"
+            ],
+            "iconPath": full_icon_path(
+                get_step_display_properties(class_ability_node)["icon"]
+            ),
+        }
+
+        active_movement_ability = {
+            "name": get_step_display_properties(movement_ability_node)["name"],
+            "description": get_step_display_properties(movement_ability_node)[
+                "description"
+            ],
+            "iconPath": full_icon_path(
+                get_step_display_properties(movement_ability_node)["icon"]
+            ),
+        }
+
+        active_grenade_ability = {
+            "name": get_step_display_properties(grenade_ability_node)["name"],
+            "description": get_step_display_properties(grenade_ability_node)[
+                "description"
+            ],
+            "iconPath": full_icon_path(
+                get_step_display_properties(grenade_ability_node)["icon"]
+            ),
+        }
+
+        # find the group that the active nodes are in to get the path name without pulling the lore definition
+        # all the active nodes in the tree must belong to the same group because the game enforces that, so just use the first node
+
+        tree_node_category = [
+            c
+            for c in talent_grid["nodeCategories"]
+            if active_tree_nodes[0]["nodeHash"] in c["nodeHashes"]
+        ][0]
+
+        get_node_column = lambda n: n["column"]
+
+        sorted_tree_nodes = sorted(active_tree_nodes, key=get_node_column)
+
+        # there should be 4 nodes in this iterable, grouped like this: [(left), (top, bottom), (right)]
+        # so to get the correct diamond shape, compare the 'row' property of the middle group to see which is top or bottom
+        # and they are sorted by column so left and right should already be correct
+        for index, (column, g) in enumerate(
+            groupby(sorted_tree_nodes, key=get_node_column)
+        ):
+            group = list(g)
+            if len(list(group)) == 2:
+                if group[0]["row"] < group[1]["row"]:
+                    tree_top_perk = group[0]
+                    tree_bottom_perk = group[1]
+                else:
+                    tree_top_perk = group[1]
+                    tree_bottom_perk = group[0]
+            elif index == 0:
+                tree_left_perk = group[0]
+            elif index == 2:
+                tree_right_perk = group[0]
+
+        active_tree_group_hash = active_tree_nodes[0]["groupHash"]
+
+        active_tree = {
+            "name": tree_node_category["displayProperties"]["name"],
+            "iconPath": full_icon_path(tree_node_category["displayProperties"]["icon"]),
+            "treePathType": "top"
+            if active_tree_group_hash == top_tree_group_hash
+            else "middle"
+            if active_tree_group_hash == middle_tree_group_hash
+            else "bottom"
+            if active_tree_group_hash == bottom_tree_group_hash
+            else "",
+            "leftPerk": {
+                "name": get_step_display_properties(tree_left_perk)["name"],
+                "iconPath": full_icon_path(
+                    get_step_display_properties(tree_left_perk)["icon"]
+                ),
+                "description": get_step_display_properties(tree_left_perk)[
+                    "description"
+                ],
+            },
+            "topPerk": {
+                "name": get_step_display_properties(tree_top_perk)["name"],
+                "iconPath": full_icon_path(
+                    get_step_display_properties(tree_top_perk)["icon"]
+                ),
+                "description": get_step_display_properties(tree_top_perk)[
+                    "description"
+                ],
+            },
+            "rightPerk": {
+                "name": get_step_display_properties(tree_right_perk)["name"],
+                "iconPath": full_icon_path(
+                    get_step_display_properties(tree_right_perk)["icon"]
+                ),
+                "description": get_step_display_properties(tree_right_perk)[
+                    "description"
+                ],
+            },
+            "bottomPerk": {
+                "name": get_step_display_properties(tree_bottom_perk)["name"],
+                "iconPath": full_icon_path(
+                    get_step_display_properties(tree_bottom_perk)["icon"]
+                ),
+                "description": get_step_display_properties(tree_bottom_perk)[
+                    "description"
+                ],
+            },
+        }
+
+        return TreeStyleSubclass(
+            name=item_def["displayProperties"]["name"],
+            iconPath=full_icon_path(item_def["displayProperties"]["icon"]),
+            damageType=item_def["talentGrid"]["hudDamageType"],
+            itemHash=response["itemHash"],
+            activeClassAbility=active_class_ability,
+            activeMovementAbility=active_movement_ability,
+            activeGrenadeAbility=active_grenade_ability,
+            activeTree=active_tree,
         )

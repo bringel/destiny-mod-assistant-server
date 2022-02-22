@@ -1,3 +1,4 @@
+from abc import ABC, abstractproperty
 from dataclasses import dataclass
 from enum import Enum
 from itertools import groupby
@@ -108,8 +109,72 @@ stat_type_hash_energy_type_mapping = {
 }
 
 
+class SocketedItem(ABC):
+    @abstractproperty
+    @property
+    def socket_category_hashes(self):
+        pass
+
+    def parse_sockets(
+        self, item_hash, item_instance_socket_response, inventory_item_defs
+    ):
+        item_def = inventory_item_defs[str(item_hash)]
+        socket_indexes = []
+        sockets = []
+        for category_hash in self.socket_category_hashes:
+            for category in item_def["sockets"]["socketCategories"]:
+                if category["socketCategoryHash"] == category_hash:
+                    socket_indexes.extend(category["socketIndexes"])
+
+        for index in socket_indexes:
+            item_def_socket_entry = item_def["sockets"]["socketEntries"][index]
+            item_instance_socket = item_instance_socket_response[index]
+            socket_intitial_item_def_hash = item_def_socket_entry[
+                "singleInitialItemHash"
+            ]
+
+            socket_initial_item_def = inventory_item_defs[
+                str(socket_intitial_item_def_hash)
+            ]
+            s = {
+                "socketItemTypeHash": item_def_socket_entry["singleInitialItemHash"],
+                "displayName": socket_initial_item_def["itemTypeDisplayName"],
+                "iconPath": full_icon_path(
+                    socket_initial_item_def["displayProperties"]["icon"]
+                ),
+                "plugSetHash": item_def_socket_entry["reusablePlugSetHash"],
+            }
+
+            if item_instance_socket["plugHash"] != socket_intitial_item_def_hash:
+                active_plug_item_def = inventory_item_defs[
+                    str(item_instance_socket["plugHash"])
+                ]
+                energy_stat = [
+                    s
+                    for s in active_plug_item_def["investmentStats"]
+                    if s["statTypeHash"] in stat_type_hash_energy_type_mapping.keys()
+                ][0]
+
+                s["currentPlug"] = {
+                    "plugHash": item_instance_socket["plugHash"],
+                    "displayName": active_plug_item_def["displayProperties"]["name"],
+                    "iconPath": full_icon_path(
+                        active_plug_item_def["displayProperties"]["icon"]
+                    ),
+                    "energyCost": energy_stat["value"],
+                    "energyType": stat_type_hash_energy_type_mapping[
+                        energy_stat["statTypeHash"]
+                    ],
+                }
+            else:
+                s["currentPlug"] = None
+            sockets.append(s)
+
+        return sockets
+
+
 @dataclass
-class ArmorPiece:
+class ArmorPiece(SocketedItem):
     itemHash: int
     itemInstanceID: str
     itemType: ArmorType
@@ -121,58 +186,17 @@ class ArmorPiece:
     energyUsed: int
     sockets: dict
 
+    socket_category_hashes = [ARMOR_MOD_CATEGORY]
+
     @classmethod
     def from_json(self, response, instance, socket_response, inventory_item_defs):
-        # TODO: try to abstract the socket logic to a mixin class so that we can use it for aspect-based subclasses as well
         item = inventory_item_defs[str(response["itemHash"])]
-        armor_mod_indexes = None
-        for category in item["sockets"]["socketCategories"]:
-            if category["socketCategoryHash"] == ARMOR_MOD_CATEGORY:
-                armor_mod_indexes = category["socketIndexes"]
-
-        sockets = []
-        if armor_mod_indexes:
-            for index in armor_mod_indexes:
-                armor_item_definition_socket = item["sockets"]["socketEntries"][index]
-                item_component_socket = socket_response[index]
-                socket_item_initial_mod_def = inventory_item_defs[
-                    str(armor_item_definition_socket["singleInitialItemHash"])
-                ]
-
-                s = {
-                    "socketItemTypeHash": armor_item_definition_socket[
-                        "singleInitialItemHash"
-                    ],
-                    "displayName": socket_item_initial_mod_def["itemTypeDisplayName"],
-                    "iconPath": f"https://bungie.net{socket_item_initial_mod_def['displayProperties']['icon']}",
-                    "plugSetHash": armor_item_definition_socket["reusablePlugSetHash"],
-                }
-                if (
-                    item_component_socket["plugHash"]
-                    != armor_item_definition_socket["singleInitialItemHash"]
-                ):
-                    active_mod_item_def = inventory_item_defs[
-                        str(item_component_socket["plugHash"])
-                    ]
-                    energy_stat = [
-                        m
-                        for m in active_mod_item_def["investmentStats"]
-                        if m["statTypeHash"]
-                        in stat_type_hash_energy_type_mapping.keys()
-                    ][0]
-
-                    s["currentPlug"] = {
-                        "plugHash": item_component_socket["plugHash"],
-                        "displayName": active_mod_item_def["displayProperties"]["name"],
-                        "iconPath": f"https://bungie.net{active_mod_item_def['displayProperties']['icon']}",
-                        "energyCost": energy_stat["value"],
-                        "energyType": stat_type_hash_energy_type_mapping[
-                            energy_stat["statTypeHash"]
-                        ],
-                    }
-                else:
-                    s["currentPlug"] = None
-                sockets.append(s)
+        sockets = self.parse_sockets(
+            self,
+            response["itemHash"],
+            socket_response,
+            inventory_item_defs,
+        )
 
         return ArmorPiece(
             itemHash=response["itemHash"],

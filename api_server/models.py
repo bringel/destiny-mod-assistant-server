@@ -119,57 +119,66 @@ class SocketedItem(ABC):
         self, item_hash, item_instance_socket_response, inventory_item_defs
     ):
         item_def = inventory_item_defs[str(item_hash)]
-        socket_indexes = []
-        sockets = []
+        sockets = {}
         for category_hash in self.socket_category_hashes:
+            socket_indexes = []
+            category_sockets = []
             for category in item_def["sockets"]["socketCategories"]:
                 if category["socketCategoryHash"] == category_hash:
-                    socket_indexes.extend(category["socketIndexes"])
+                    socket_indexes = category["socketIndexes"]
 
-        for index in socket_indexes:
-            item_def_socket_entry = item_def["sockets"]["socketEntries"][index]
-            item_instance_socket = item_instance_socket_response[index]
-            socket_intitial_item_def_hash = item_def_socket_entry[
-                "singleInitialItemHash"
-            ]
+                for index in socket_indexes:
+                    item_def_socket_entry = item_def["sockets"]["socketEntries"][index]
+                    item_instance_socket = item_instance_socket_response[index]
+                    socket_intitial_item_def_hash = item_def_socket_entry[
+                        "singleInitialItemHash"
+                    ]
 
-            socket_initial_item_def = inventory_item_defs[
-                str(socket_intitial_item_def_hash)
-            ]
-            s = {
-                "socketItemTypeHash": item_def_socket_entry["singleInitialItemHash"],
-                "displayName": socket_initial_item_def["itemTypeDisplayName"],
-                "iconPath": full_icon_path(
-                    socket_initial_item_def["displayProperties"]["icon"]
-                ),
-                "plugSetHash": item_def_socket_entry["reusablePlugSetHash"],
-            }
+                    socket_initial_item_def = inventory_item_defs[
+                        str(socket_intitial_item_def_hash)
+                    ]
+                    s = {
+                        "socketItemTypeHash": item_def_socket_entry[
+                            "singleInitialItemHash"
+                        ],
+                        "displayName": socket_initial_item_def["itemTypeDisplayName"],
+                        "iconPath": full_icon_path(
+                            socket_initial_item_def["displayProperties"]["icon"]
+                        ),
+                        "plugSetHash": item_def_socket_entry["reusablePlugSetHash"],
+                    }
 
-            if item_instance_socket["plugHash"] != socket_intitial_item_def_hash:
-                active_plug_item_def = inventory_item_defs[
-                    str(item_instance_socket["plugHash"])
-                ]
-                energy_stat = [
-                    s
-                    for s in active_plug_item_def["investmentStats"]
-                    if s["statTypeHash"] in stat_type_hash_energy_type_mapping.keys()
-                ][0]
+                    if (
+                        item_instance_socket["plugHash"]
+                        != socket_intitial_item_def_hash
+                    ):
+                        active_plug_item_def = inventory_item_defs[
+                            str(item_instance_socket["plugHash"])
+                        ]
+                        energy_stat = [
+                            s
+                            for s in active_plug_item_def["investmentStats"]
+                            if s["statTypeHash"]
+                            in stat_type_hash_energy_type_mapping.keys()
+                        ][0]
 
-                s["currentPlug"] = {
-                    "plugHash": item_instance_socket["plugHash"],
-                    "displayName": active_plug_item_def["displayProperties"]["name"],
-                    "iconPath": full_icon_path(
-                        active_plug_item_def["displayProperties"]["icon"]
-                    ),
-                    "energyCost": energy_stat["value"],
-                    "energyType": stat_type_hash_energy_type_mapping[
-                        energy_stat["statTypeHash"]
-                    ],
-                }
-            else:
-                s["currentPlug"] = None
-            sockets.append(s)
-
+                        s["currentPlug"] = {
+                            "plugHash": item_instance_socket["plugHash"],
+                            "displayName": active_plug_item_def["displayProperties"][
+                                "name"
+                            ],
+                            "iconPath": full_icon_path(
+                                active_plug_item_def["displayProperties"]["icon"]
+                            ),
+                            "energyCost": energy_stat["value"],
+                            "energyType": stat_type_hash_energy_type_mapping[
+                                energy_stat["statTypeHash"]
+                            ],
+                        }
+                    else:
+                        s["currentPlug"] = None
+                    category_sockets.append(s)
+            sockets[category_hash] = category_sockets
         return sockets
 
 
@@ -184,7 +193,7 @@ class ArmorPiece(SocketedItem):
     energyType: EnergyType
     energyCapacity: int
     energyUsed: int
-    sockets: dict
+    modSlots: list
 
     socket_category_hashes = [ARMOR_MOD_CATEGORY]
 
@@ -208,7 +217,7 @@ class ArmorPiece(SocketedItem):
             energyType=EnergyType(instance["energy"]["energyType"]),
             energyCapacity=instance["energy"]["energyCapacity"],
             energyUsed=instance["energy"]["energyUsed"],
-            sockets=sockets,
+            modSlots=sockets[ARMOR_MOD_CATEGORY],
         )
 
 

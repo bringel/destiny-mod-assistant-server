@@ -9,7 +9,7 @@ from werkzeug.middleware.profiler import ProfilerMiddleware
 
 from api_server.database import db
 from api_server.destiny_api import DestinyAPI
-from api_server.models import User
+from api_server.models import CharacterSchema, FullCharacterDataSchema, User, UserSchema
 from api_server.repositories.user_repository import UserRepository
 
 sess = Session()
@@ -61,12 +61,12 @@ def create_app():
         destiny_api = DestinyAPI()
         user = destiny_api.get_bungie_user_linked_profiles()
 
-        session["destinyMembershipType"] = user.destinyMembershipType
-        session["destinyMembershipID"] = user.destinyMembershipID
+        session["destinyMembershipType"] = user.destiny_membership_type
+        session["destinyMembershipID"] = user.destiny_membership_id
 
         user_repository = UserRepository()
         existing_user = user_repository.get_user(
-            user.destinyMembershipType, user.destinyMembershipID
+            user.destiny_membership_type, user.destiny_membership_id
         )
 
         if existing_user is None:
@@ -83,7 +83,7 @@ def create_app():
 
         user = user_repository.get_user(membership_type, membership_id)
 
-        res = jsonify(user)
+        res = jsonify(UserSchema().dump(user))
 
         return res
 
@@ -91,12 +91,14 @@ def create_app():
     def get_characters():
         destiny_api = DestinyAPI()
 
-        return jsonify(destiny_api.get_characters())
+        return jsonify(CharacterSchema().dump(destiny_api.get_characters(), many=True))
 
     @app.route("/characters/<character_id>")
     def get_character(character_id):
         destiny_api = DestinyAPI()
 
-        return jsonify(destiny_api.get_character(character_id))
+        return jsonify(
+            FullCharacterDataSchema().dump(destiny_api.get_character(character_id))
+        )
 
     return app

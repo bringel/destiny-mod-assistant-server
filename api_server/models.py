@@ -1,18 +1,34 @@
 from abc import ABC, abstractproperty
 from dataclasses import dataclass
 from enum import Enum
+from importlib.metadata import metadata
 from itertools import groupby
+from typing import List, Union
+
+import marshmallow_union
+from marshmallow import Schema, fields
+from marshmallow_enum import EnumField
 
 
 def full_icon_path(path):
     return f"https://bungie.net{path}"
 
 
+def camelcase(s):
+    parts = iter(s.split("_"))
+    return next(parts) + "".join(i.title() for i in parts)
+
+
+class JSONSchema(Schema):
+    def on_bind_field(self, field_name: str, field_obj) -> None:
+        field_obj.data_key = camelcase(field_obj.data_key or field_name)
+
+
 @dataclass
 class User:
-    destinyMembershipType: int
-    destinyMembershipID: int
-    displayName: str
+    destiny_membership_type: int
+    destiny_membership_id: int
+    display_name: str
 
     @classmethod
     def from_json(self, response):
@@ -22,28 +38,34 @@ class User:
         display_name = f"{profile['bungieGlobalDisplayName']}#{profile['bungieGlobalDisplayNameCode']}"
 
         return User(
-            destinyMembershipType=membership_type,
-            destinyMembershipID=membership_id,
-            displayName=display_name,
+            destiny_membership_type=membership_type,
+            destiny_membership_id=membership_id,
+            display_name=display_name,
         )
 
     @classmethod
     def from_db(self, row):
         return User(
-            destinyMembershipType=row["destiny_membership_type"],
-            destinyMembershipID=row["destiny_membership_id"],
-            displayName=row["display_name"],
+            destiny_membership_type=row["destiny_membership_type"],
+            destiny_membership_id=row["destiny_membership_id"],
+            display_name=row["display_name"],
         )
+
+
+class UserSchema(JSONSchema):
+    destiny_membership_type = fields.Str()
+    destiny_membership_id = fields.Str()
+    display_name = fields.Str()
 
 
 @dataclass
 class Character:
-    characterID: int
-    characterClass: str
-    genderAndRaceDescription: str
-    dateLastPlayed: str
+    character_id: int
+    character_class: str
+    gender_and_race_description: str
+    date_last_played: str
     light: int
-    emblemBackgroundPath: str
+    emblem_background_path: str
 
     @classmethod
     def from_json(self, response, race_defs, class_defs):
@@ -51,15 +73,24 @@ class Character:
         character_class = class_defs.get(str(response.get("classHash")))
 
         return Character(
-            characterID=response.get("characterId"),
-            characterClass=character_class["displayProperties"]["name"],
-            genderAndRaceDescription=race["genderedRaceNamesByGenderHash"][
+            character_id=response.get("characterId"),
+            character_class=character_class["displayProperties"]["name"],
+            gender_and_race_description=race["genderedRaceNamesByGenderHash"][
                 str(response.get("genderHash"))
             ],
-            dateLastPlayed=response.get("dateLastPlayed"),
+            date_last_played=response.get("dateLastPlayed"),
             light=response.get("light"),
-            emblemBackgroundPath=f'https://bungie.net{response.get("emblemBackgroundPath")}',
+            emblem_background_path=f'https://bungie.net{response.get("emblemBackgroundPath")}',
         )
+
+
+class CharacterSchema(JSONSchema):
+    character_id = fields.Int()
+    character_class = fields.Str()
+    gender_and_race_description = fields.Str()
+    date_last_played = fields.Str()
+    light = fields.Int()
+    emblem_background_path = fields.Str()
 
 
 ARMOR_MOD_CATEGORY = 590099826
@@ -91,7 +122,7 @@ class DamageType(int, Enum):
     Stasis = 6
 
 
-bucket_hash_armor_type_mapping = {
+BUCKET_HASH_ARMOR_TYPE_MAPPING = {
     3448274439: ArmorType.Helmet,
     3551918588: ArmorType.Arms,
     14239492: ArmorType.Chest,
@@ -99,7 +130,7 @@ bucket_hash_armor_type_mapping = {
     1585787867: ArmorType.ClassItem,
 }
 
-stat_type_hash_energy_type_mapping = {
+STAT_TYPE_HASH_ENERGY_TYPE_MAPPING = {
     2399985800: EnergyType.Void,
     998798867: EnergyType.Stasis,
     3344745325: EnergyType.Solar,
@@ -107,6 +138,41 @@ stat_type_hash_energy_type_mapping = {
     3779394102: EnergyType.Arc,
     3950461274: EnergyType.Stasis,
 }
+
+# The SocketResponse and PlugResponse classes are returned from the SocketedItem base class and can be returned directly
+# or transformed into somethng else if more custom fields are needed
+@dataclass
+class PlugResponse:
+    plug_hash: str
+    display_name: str
+    icon_path: str
+    energy_type: EnergyType
+    energy_cost: int
+
+
+class PlugResponseSchema(JSONSchema):
+    plug_hash = fields.Str()
+    display_name = fields.Str()
+    icon_path = fields.Str()
+    energy_type = EnumField(EnergyType, by_value=True)
+    energy_cost = fields.Int()
+
+
+@dataclass
+class SocketResponse:
+    display_name: str
+    icon_path: str
+    plug_set_hash: str
+    socket_item_type_hash: str
+    current_plug: Union[PlugResponse, None]
+
+
+class SocketResponseSchema(JSONSchema):
+    display_name = fields.Str()
+    icon_path = fields.Str()
+    plug_set_hash = fields.Str()
+    socket_item_type_hash = fields.Str()
+    current_plug = marshmallow_union.Union([fields.Nested(PlugResponseSchema), None])
 
 
 class SocketedItem(ABC):
@@ -117,7 +183,7 @@ class SocketedItem(ABC):
 
     def parse_sockets(
         self, item_hash, item_instance_socket_response, inventory_item_defs
-    ):
+    ) -> List[SocketResponse]:
         item_def = inventory_item_defs[str(item_hash)]
         sockets = {}
         for category_hash in self.socket_category_hashes:
@@ -138,14 +204,14 @@ class SocketedItem(ABC):
                         str(socket_intitial_item_def_hash)
                     ]
                     s = {
-                        "socketItemTypeHash": item_def_socket_entry[
+                        "socket_item_type_hash": item_def_socket_entry[
                             "singleInitialItemHash"
                         ],
-                        "displayName": socket_initial_item_def["itemTypeDisplayName"],
-                        "iconPath": full_icon_path(
+                        "display_name": socket_initial_item_def["itemTypeDisplayName"],
+                        "icon_path": full_icon_path(
                             socket_initial_item_def["displayProperties"]["icon"]
                         ),
-                        "plugSetHash": item_def_socket_entry["reusablePlugSetHash"],
+                        "plug_set_hash": item_def_socket_entry["reusablePlugSetHash"],
                     }
 
                     if (
@@ -159,24 +225,24 @@ class SocketedItem(ABC):
                             s
                             for s in active_plug_item_def["investmentStats"]
                             if s["statTypeHash"]
-                            in stat_type_hash_energy_type_mapping.keys()
+                            in STAT_TYPE_HASH_ENERGY_TYPE_MAPPING.keys()
                         ][0]
 
-                        s["currentPlug"] = {
-                            "plugHash": item_instance_socket["plugHash"],
-                            "displayName": active_plug_item_def["displayProperties"][
+                        s["current_plug"] = {
+                            "plug_hash": item_instance_socket["plugHash"],
+                            "display_name": active_plug_item_def["displayProperties"][
                                 "name"
                             ],
-                            "iconPath": full_icon_path(
+                            "icon_path": full_icon_path(
                                 active_plug_item_def["displayProperties"]["icon"]
                             ),
-                            "energyCost": energy_stat["value"],
-                            "energyType": stat_type_hash_energy_type_mapping[
+                            "energy_cost": energy_stat["value"],
+                            "energy_type": STAT_TYPE_HASH_ENERGY_TYPE_MAPPING[
                                 energy_stat["statTypeHash"]
                             ],
                         }
                     else:
-                        s["currentPlug"] = None
+                        s["current_plug"] = None
                     category_sockets.append(s)
             sockets[category_hash] = category_sockets
         return sockets
@@ -184,16 +250,16 @@ class SocketedItem(ABC):
 
 @dataclass
 class ArmorPiece(SocketedItem):
-    itemHash: int
-    itemInstanceID: str
-    itemType: ArmorType
-    bucketHash: int
+    item_hash: int
+    item_instance_id: str
+    item_type: ArmorType
+    bucket_hash: int
     name: str
-    iconPath: str
-    energyType: EnergyType
-    energyCapacity: int
-    energyUsed: int
-    modSlots: list
+    icon_path: str
+    energy_type: EnergyType
+    energy_capacity: int
+    energy_used: int
+    mod_slots: List[SocketResponse]
 
     socket_category_hashes = [ARMOR_MOD_CATEGORY]
 
@@ -208,38 +274,91 @@ class ArmorPiece(SocketedItem):
         )
 
         return ArmorPiece(
-            itemHash=response["itemHash"],
-            itemInstanceID=response["itemInstanceId"],
-            itemType=bucket_hash_armor_type_mapping.get(response["bucketHash"]),
-            bucketHash=response["bucketHash"],
+            item_hash=response["itemHash"],
+            item_instance_id=response["itemInstanceId"],
+            item_type=BUCKET_HASH_ARMOR_TYPE_MAPPING.get(response["bucketHash"]),
+            bucket_hash=response["bucketHash"],
             name=item["displayProperties"]["name"],
-            iconPath=f'https://bungie.net{item["displayProperties"]["icon"]}',
-            energyType=EnergyType(instance["energy"]["energyType"]),
-            energyCapacity=instance["energy"]["energyCapacity"],
-            energyUsed=instance["energy"]["energyUsed"],
-            modSlots=sockets[ARMOR_MOD_CATEGORY],
+            icon_path=f'https://bungie.net{item["displayProperties"]["icon"]}',
+            energy_type=EnergyType(instance["energy"]["energyType"]),
+            energy_capacity=instance["energy"]["energyCapacity"],
+            energy_used=instance["energy"]["energyUsed"],
+            mod_slots=sockets[ARMOR_MOD_CATEGORY],
         )
 
 
-subclass_bucket_hash = 3284755031
-class_ability_group_hashes = [3874829120, 3874829121]
-movement_group_hashes = [4114106724, 4114106725, 4114106726]
-grenade_group_hashes = [2697262605, 2697262606, 2697262607]
-top_tree_group_hash = 1350529726
-middle_tree_group_hash = 1350529727
-bottom_tree_group_hash = 1350529724
+class ArmorPieceSchema(JSONSchema):
+    item_hash = fields.Int()
+    item_instance_id = fields.Str()
+    item_type = EnumField(ArmorType, by_value=True)
+    bucket_hash = fields.Int()
+    name = fields.Str()
+    icon_path = fields.Str()
+    energy_type = EnumField(EnergyType, by_value=True)
+    energy_capacity = fields.Int()
+    energy_used = fields.Int()
+    mod_slots = fields.List(fields.Nested(SocketResponseSchema))
+
+
+@dataclass
+class TreeStyleSubclassPerk:
+    name: str
+    icon_path: str
+    description: str
+
+
+class TreeStyleSubclassPerkSchema(JSONSchema):
+    name = fields.Str()
+    icon_path = fields.Str()
+    description = fields.Str()
+
+
+class TreePathType(int, Enum):
+    Top = 0
+    Middle = 1
+    Bottom = 2
+
+
+@dataclass
+class TreeStyleSubclassTree:
+    name: str
+    icon_path: str
+    tree_path_type: TreePathType
+    left_perk: TreeStyleSubclassPerk
+    top_perk: TreeStyleSubclassPerk
+    right_perk: TreeStyleSubclassPerk
+    bottom_perk: TreeStyleSubclassPerk
+
+
+class TreeStyleSubclassTreeSchema(JSONSchema):
+    name = fields.Str()
+    icon_path = fields.Str()
+    tree_path_type = EnumField(TreePathType, by_value=True)
+    left_perk = fields.Nested(TreeStyleSubclassPerkSchema)
+    top_perk = fields.Nested(TreeStyleSubclassPerkSchema)
+    right_perk = fields.Nested(TreeStyleSubclassPerkSchema)
+    bottom_perk = fields.Nested(TreeStyleSubclassPerkSchema)
+
+
+SUBCLASSS_BUCKET_HASH = 3284755031
+CLASS_ABILITY_GROUP_HASHES = [3874829120, 3874829121]
+MOVEMENT_GROUP_HASHES = [4114106724, 4114106725, 4114106726]
+GRENADE_GROUP_HASHES = [2697262605, 2697262606, 2697262607]
+TOP_TREE_GROUP_HASH = 1350529726
+MIDDLE_TREE_GROUP_HASH = 1350529727
+BOTTOM_TREE_GROUP_HASH = 1350529724
 
 
 @dataclass
 class TreeStyleSubclass:
     name: str
-    iconPath: str
-    damageType: DamageType
-    itemHash: str
-    activeClassAbility: dict
-    activeMovementAbility: dict
-    activeGrenadeAbility: dict
-    activeTree: dict
+    icon_path: str
+    damage_type: DamageType
+    item_hash: str
+    active_class_ability: TreeStyleSubclassPerk
+    active_movement_ability: TreeStyleSubclassPerk
+    active_grenade_ability: TreeStyleSubclassPerk
+    active_tree: TreeStyleSubclassTree
 
     @classmethod
     def from_json(
@@ -265,56 +384,54 @@ class TreeStyleSubclass:
         class_ability_node = [
             n
             for n in talent_grid_nodes
-            if n.get("groupHash") in class_ability_group_hashes
+            if n.get("groupHash") in CLASS_ABILITY_GROUP_HASHES
         ][0]
 
         movement_ability_node = [
-            n for n in talent_grid_nodes if n.get("groupHash") in movement_group_hashes
+            n for n in talent_grid_nodes if n.get("groupHash") in MOVEMENT_GROUP_HASHES
         ][0]
 
         grenade_ability_node = [
-            n for n in talent_grid_nodes if n.get("groupHash") in grenade_group_hashes
+            n for n in talent_grid_nodes if n.get("groupHash") in GRENADE_GROUP_HASHES
         ][0]
 
         active_tree_nodes = [
             n
             for n in talent_grid_nodes
             if n.get("groupHash")
-            in [top_tree_group_hash, middle_tree_group_hash, bottom_tree_group_hash]
+            in [TOP_TREE_GROUP_HASH, MIDDLE_TREE_GROUP_HASH, BOTTOM_TREE_GROUP_HASH]
         ]
 
         def get_step_display_properties(node):
             return node["steps"][0]["displayProperties"]
 
-        active_class_ability = {
-            "name": get_step_display_properties(class_ability_node)["name"],
-            "description": get_step_display_properties(class_ability_node)[
-                "description"
-            ],
-            "iconPath": full_icon_path(
+        active_class_ability = TreeStyleSubclassPerk(
+            name=get_step_display_properties(class_ability_node)["name"],
+            description=get_step_display_properties(class_ability_node)["description"],
+            icon_path=full_icon_path(
                 get_step_display_properties(class_ability_node)["icon"]
             ),
-        }
+        )
 
-        active_movement_ability = {
-            "name": get_step_display_properties(movement_ability_node)["name"],
-            "description": get_step_display_properties(movement_ability_node)[
+        active_movement_ability = TreeStyleSubclassPerk(
+            name=get_step_display_properties(movement_ability_node)["name"],
+            description=get_step_display_properties(movement_ability_node)[
                 "description"
             ],
-            "iconPath": full_icon_path(
+            icon_path=full_icon_path(
                 get_step_display_properties(movement_ability_node)["icon"]
             ),
-        }
+        )
 
-        active_grenade_ability = {
-            "name": get_step_display_properties(grenade_ability_node)["name"],
-            "description": get_step_display_properties(grenade_ability_node)[
+        active_grenade_ability = TreeStyleSubclassPerk(
+            name=get_step_display_properties(grenade_ability_node)["name"],
+            description=get_step_display_properties(grenade_ability_node)[
                 "description"
             ],
-            "iconPath": full_icon_path(
+            icon_path=full_icon_path(
                 get_step_display_properties(grenade_ability_node)["icon"]
             ),
-        }
+        )
 
         # find the group that the active nodes are in to get the path name without pulling the lore definition
         # all the active nodes in the tree must belong to the same group because the game enforces that, so just use the first node
@@ -350,61 +467,82 @@ class TreeStyleSubclass:
 
         active_tree_group_hash = active_tree_nodes[0]["groupHash"]
 
-        active_tree = {
-            "name": tree_node_category["displayProperties"]["name"],
-            "iconPath": full_icon_path(tree_node_category["displayProperties"]["icon"]),
-            "treePathType": "top"
-            if active_tree_group_hash == top_tree_group_hash
-            else "middle"
-            if active_tree_group_hash == middle_tree_group_hash
-            else "bottom"
-            if active_tree_group_hash == bottom_tree_group_hash
-            else "",
-            "leftPerk": {
-                "name": get_step_display_properties(tree_left_perk)["name"],
-                "iconPath": full_icon_path(
+        if active_tree_group_hash == TOP_TREE_GROUP_HASH:
+            tree_path_type = TreePathType.Top
+        elif active_tree_group_hash == MIDDLE_TREE_GROUP_HASH:
+            tree_path_type = TreePathType.Middle
+        elif active_tree_group_hash == BOTTOM_TREE_GROUP_HASH:
+            tree_path_type = TreePathType.Bottom
+        else:
+            tree_path_type = None
+
+        active_tree = TreeStyleSubclassTree(
+            name=tree_node_category["displayProperties"]["name"],
+            icon_path=full_icon_path(tree_node_category["displayProperties"]["icon"]),
+            tree_path_type=tree_path_type,
+            left_perk=TreeStyleSubclassPerk(
+                name=get_step_display_properties(tree_left_perk)["name"],
+                icon_path=full_icon_path(
                     get_step_display_properties(tree_left_perk)["icon"]
                 ),
-                "description": get_step_display_properties(tree_left_perk)[
-                    "description"
-                ],
-            },
-            "topPerk": {
-                "name": get_step_display_properties(tree_top_perk)["name"],
-                "iconPath": full_icon_path(
+                description=get_step_display_properties(tree_left_perk)["description"],
+            ),
+            top_perk=TreeStyleSubclassPerk(
+                name=get_step_display_properties(tree_top_perk)["name"],
+                icon_path=full_icon_path(
                     get_step_display_properties(tree_top_perk)["icon"]
                 ),
-                "description": get_step_display_properties(tree_top_perk)[
-                    "description"
-                ],
-            },
-            "rightPerk": {
-                "name": get_step_display_properties(tree_right_perk)["name"],
-                "iconPath": full_icon_path(
+                description=get_step_display_properties(tree_top_perk)["description"],
+            ),
+            right_perk=TreeStyleSubclassPerk(
+                name=get_step_display_properties(tree_right_perk)["name"],
+                icon_path=full_icon_path(
                     get_step_display_properties(tree_right_perk)["icon"]
                 ),
-                "description": get_step_display_properties(tree_right_perk)[
-                    "description"
-                ],
-            },
-            "bottomPerk": {
-                "name": get_step_display_properties(tree_bottom_perk)["name"],
-                "iconPath": full_icon_path(
+                description=get_step_display_properties(tree_right_perk)["description"],
+            ),
+            bottom_perk=TreeStyleSubclassPerk(
+                name=get_step_display_properties(tree_bottom_perk)["name"],
+                icon_path=full_icon_path(
                     get_step_display_properties(tree_bottom_perk)["icon"]
                 ),
-                "description": get_step_display_properties(tree_bottom_perk)[
+                description=get_step_display_properties(tree_bottom_perk)[
                     "description"
                 ],
-            },
-        }
+            ),
+        )
 
         return TreeStyleSubclass(
             name=item_def["displayProperties"]["name"],
-            iconPath=full_icon_path(item_def["displayProperties"]["icon"]),
-            damageType=item_def["talentGrid"]["hudDamageType"],
-            itemHash=response["itemHash"],
-            activeClassAbility=active_class_ability,
-            activeMovementAbility=active_movement_ability,
-            activeGrenadeAbility=active_grenade_ability,
-            activeTree=active_tree,
+            icon_path=full_icon_path(item_def["displayProperties"]["icon"]),
+            damage_type=DamageType(item_def["talentGrid"]["hudDamageType"]),
+            item_hash=response["itemHash"],
+            active_class_ability=active_class_ability,
+            active_movement_ability=active_movement_ability,
+            active_grenade_ability=active_grenade_ability,
+            active_tree=active_tree,
         )
+
+
+class TreeStyleSubclassSchema(JSONSchema):
+    name = fields.Str()
+    icon_path = fields.Str()
+    damage_type = EnumField(DamageType, by_value=True)
+    item_hash = fields.Str()
+    active_class_ability = fields.Nested(TreeStyleSubclassPerkSchema)
+    active_movement_ability = fields.Nested(TreeStyleSubclassPerkSchema)
+    active_grenade_ability = fields.Nested(TreeStyleSubclassPerkSchema)
+    active_tree = fields.Nested(TreeStyleSubclassTreeSchema)
+
+
+@dataclass
+class FullCharacterData:
+    character: Character
+    armor: List[ArmorPiece]
+    subclass: TreeStyleSubclass
+
+
+class FullCharacterDataSchema(JSONSchema):
+    character = fields.Nested(CharacterSchema)
+    armor = fields.List(fields.Nested(ArmorPieceSchema))
+    subclass = fields.Nested(TreeStyleSubclassSchema)

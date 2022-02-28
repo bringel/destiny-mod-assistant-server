@@ -6,12 +6,13 @@ from requests_oauthlib import OAuth2Session
 
 from api_server.destiny_manifest import DestinyManifest
 from api_server.models import (
+    BUCKET_HASH_ARMOR_TYPE_MAPPING,
+    SUBCLASSS_BUCKET_HASH,
     ArmorPiece,
     Character,
+    FullCharacterData,
     TreeStyleSubclass,
     User,
-    bucket_hash_armor_type_mapping,
-    subclass_bucket_hash,
 )
 
 headers = {"X-API-KEY": os.environ.get("BUNGIE_API_KEY")}
@@ -164,7 +165,7 @@ class DestinyAPI:
         armor_responses = [
             e
             for e in equipment_res
-            if e["bucketHash"] in bucket_hash_armor_type_mapping.keys()
+            if e["bucketHash"] in BUCKET_HASH_ARMOR_TYPE_MAPPING.keys()
         ]
 
         armor = []
@@ -177,7 +178,7 @@ class DestinyAPI:
             )
 
         equipment_subclass = [
-            e for e in equipment_res if e["bucketHash"] == subclass_bucket_hash
+            e for e in equipment_res if e["bucketHash"] == SUBCLASSS_BUCKET_HASH
         ][0]
 
         subclass = TreeStyleSubclass.from_json(
@@ -189,4 +190,4 @@ class DestinyAPI:
 
         character = Character.from_json(character_res, race_defs, class_defs)
 
-        return {"character": character, "armor": armor, "subclass": subclass}
+        return FullCharacterData(character=character, armor=armor, subclass=subclass)

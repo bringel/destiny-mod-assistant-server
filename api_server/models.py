@@ -5,9 +5,9 @@ from importlib.metadata import metadata
 from itertools import groupby
 from typing import List, Optional, Union
 
-import marshmallow_union
 from marshmallow import Schema, fields
 from marshmallow_enum import EnumField
+from marshmallow_oneofschema import OneOfSchema
 
 
 def full_icon_path(path):
@@ -183,7 +183,7 @@ class SocketResponseSchema(JSONSchema):
     icon_path = fields.Str()
     plug_set_hash = fields.Str()
     socket_item_type_hash = fields.Str()
-    current_plug = marshmallow_union.Union([fields.Nested(PlugResponseSchema), None])
+    current_plug = fields.Nested(PlugResponseSchema)
 
 
 class SocketedItem(ABC):
@@ -617,9 +617,7 @@ class AspectSubclassAspectSocket:
 class AspectSubclassAspectSocketSchema(JSONSchema):
     display_name = fields.Str()
     icon_path = fields.Str()
-    current_aspect: marshmallow_union.Union(
-        [fields.Nested(AspectSubclassAspectSchema), None]
-    )
+    current_aspect: fields.Nested(AspectSubclassAspectSchema)
 
 
 @dataclass
@@ -645,9 +643,7 @@ class AspectSubclassFragmentSocket:
 class AspectSubclassFragmentSocketSchema(JSONSchema):
     display_name = fields.Str()
     icon_path = fields.Str()
-    current_fragment: marshmallow_union.Union(
-        [fields.Nested(AspectSubclassFragmentSchema), None]
-    )
+    current_fragment: fields.Nested(AspectSubclassFragmentSchema)
 
 
 @dataclass
@@ -767,6 +763,13 @@ class AspectSubclassSchema(JSONSchema):
     fragments = fields.List(fields.Nested(AspectSubclassFragmentSocketSchema))
 
 
+class SubclassSchema(OneOfSchema):
+    type_schemas = {
+        "TreeStyleSubclass": TreeStyleSubclassSchema,
+        "AspectSubclass": AspectSubclassSchema,
+    }
+
+
 @dataclass
 class FullCharacterData:
     character: Character
@@ -777,6 +780,4 @@ class FullCharacterData:
 class FullCharacterDataSchema(JSONSchema):
     character = fields.Nested(CharacterSchema)
     armor = fields.List(fields.Nested(ArmorPieceSchema))
-    subclass = marshmallow_union.Union(
-        [fields.Nested(TreeStyleSubclassSchema), fields.Nested(AspectSubclassSchema)]
-    )
+    subclass = fields.Nested(SubclassSchema)

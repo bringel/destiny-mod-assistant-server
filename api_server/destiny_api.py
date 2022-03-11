@@ -9,6 +9,7 @@ from api_server.models import (
     BUCKET_HASH_ARMOR_TYPE_MAPPING,
     SUBCLASSS_BUCKET_HASH,
     ArmorPiece,
+    AspectSubclass,
     Character,
     FullCharacterData,
     TreeStyleSubclass,
@@ -181,12 +182,22 @@ class DestinyAPI:
             e for e in equipment_res if e["bucketHash"] == SUBCLASSS_BUCKET_HASH
         ][0]
 
-        subclass = TreeStyleSubclass.from_json(
-            equipment_subclass,
-            talentGrids[str(equipment_subclass["itemInstanceId"])],
-            inventory_item_defs,
-            talent_grid_defs,
-        )
+        talent_grid = talentGrids[str(equipment_subclass["itemInstanceId"])]
+
+        if talent_grid["talentGridHash"] == 0:
+            subclass_socket_response = sockets[equipment_subclass["itemInstanceId"]][
+                "sockets"
+            ]
+            subclass = AspectSubclass.from_json(
+                equipment_subclass, subclass_socket_response, inventory_item_defs
+            )
+        else:
+            subclass = TreeStyleSubclass.from_json(
+                equipment_subclass,
+                talent_grid,
+                inventory_item_defs,
+                talent_grid_defs,
+            )
 
         character = Character.from_json(character_res, race_defs, class_defs)
 

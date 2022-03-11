@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 from importlib.metadata import metadata
 from itertools import groupby
-from typing import List, Union
+from typing import List, Optional, Union
 
 import marshmallow_union
 from marshmallow import Schema, fields
@@ -16,7 +16,14 @@ def full_icon_path(path):
 
 def camelcase(s):
     parts = iter(s.split("_"))
-    return next(parts) + "".join(i.title() for i in parts)
+    camel_parts = []
+    first = next(parts)
+    for s in parts:
+        if s == "id":
+            camel_parts.append("ID")
+        else:
+            camel_parts.append(s.title())
+    return first + "".join(camel_parts)
 
 
 class JSONSchema(Schema):
@@ -110,6 +117,8 @@ class EnergyType(int, Enum):
     Solar = 2
     Void = 3
     Stasis = 6
+    Aspect = 10
+    Fragment = 11
 
 
 class DamageType(int, Enum):
@@ -137,6 +146,8 @@ STAT_TYPE_HASH_ENERGY_TYPE_MAPPING = {
     3578062600: EnergyType.Any,
     3779394102: EnergyType.Arc,
     3950461274: EnergyType.Stasis,
+    2223994109: EnergyType.Aspect,
+    119204074: EnergyType.Fragment,
 }
 
 # The SocketResponse and PlugResponse classes are returned from the SocketedItem base class and can be returned directly
@@ -193,40 +204,58 @@ class SocketedItem(ABC):
                 if category["socketCategoryHash"] == category_hash:
                     socket_indexes = category["socketIndexes"]
 
-                for index in socket_indexes:
-                    item_def_socket_entry = item_def["sockets"]["socketEntries"][index]
-                    item_instance_socket = item_instance_socket_response[index]
-                    socket_intitial_item_def_hash = item_def_socket_entry[
-                        "singleInitialItemHash"
-                    ]
-
-                    socket_initial_item_def = inventory_item_defs[
-                        str(socket_intitial_item_def_hash)
-                    ]
-                    s = {
-                        "socket_item_type_hash": item_def_socket_entry[
+                    for index in socket_indexes:
+                        item_def_socket_entry = item_def["sockets"]["socketEntries"][
+                            index
+                        ]
+                        item_instance_socket = item_instance_socket_response[index]
+                        socket_intitial_item_def_hash = item_def_socket_entry[
                             "singleInitialItemHash"
-                        ],
-                        "display_name": socket_initial_item_def["itemTypeDisplayName"],
-                        "icon_path": full_icon_path(
-                            socket_initial_item_def["displayProperties"]["icon"]
-                        ),
-                        "plug_set_hash": item_def_socket_entry["reusablePlugSetHash"],
-                    }
+                        ]
 
-                    if (
-                        item_instance_socket["plugHash"]
-                        != socket_intitial_item_def_hash
-                    ):
+                        try:
+                            socket_initial_item_def = inventory_item_defs[
+                                str(socket_intitial_item_def_hash)
+                            ]
+                        except:
+                            socket_initial_item_def = {
+                                "itemTypeDisplayName": "",
+                                "displayProperties": {"icon": ""},
+                            }
+                        s = {
+                            "socket_type": item_def_socket_entry["socketTypeHash"],
+                            # TODO: this needs to be renamed initial_item_hash
+                            "socket_item_type_hash": item_def_socket_entry[
+                                "singleInitialItemHash"
+                            ],
+                            "display_name": socket_initial_item_def[
+                                "itemTypeDisplayName"
+                            ],
+                            "icon_path": full_icon_path(
+                                socket_initial_item_def["displayProperties"]["icon"]
+                            ),
+                            "plug_set_hash": item_def_socket_entry.get(
+                                "reusablePlugSetHash"
+                            ),
+                        }
+
+                        # need to get the current plug info always because the aspect subclasses have sockets for jump/super/etc that have
+                        # initial items that are actual values instead of empty values. can change currentPlug to null further down the line
+                        # depending on if you need to or not
                         active_plug_item_def = inventory_item_defs[
                             str(item_instance_socket["plugHash"])
                         ]
-                        energy_stat = [
-                            s
-                            for s in active_plug_item_def["investmentStats"]
-                            if s["statTypeHash"]
-                            in STAT_TYPE_HASH_ENERGY_TYPE_MAPPING.keys()
-                        ][0]
+                        energy_stat = (
+                            [
+                                s
+                                for s in active_plug_item_def["investmentStats"]
+                                if s["statTypeHash"]
+                                in STAT_TYPE_HASH_ENERGY_TYPE_MAPPING.keys()
+                            ][0]
+                            if active_plug_item_def["investmentStats"]
+                            and len(active_plug_item_def["investmentStats"]) > 0
+                            else None
+                        )
 
                         s["current_plug"] = {
                             "plug_hash": item_instance_socket["plugHash"],
@@ -236,14 +265,16 @@ class SocketedItem(ABC):
                             "icon_path": full_icon_path(
                                 active_plug_item_def["displayProperties"]["icon"]
                             ),
-                            "energy_cost": energy_stat["value"],
+                            "energy_cost": energy_stat["value"]
+                            if energy_stat
+                            else None,
                             "energy_type": STAT_TYPE_HASH_ENERGY_TYPE_MAPPING[
                                 energy_stat["statTypeHash"]
-                            ],
+                            ]
+                            if energy_stat
+                            else None,
                         }
-                    else:
-                        s["current_plug"] = None
-                    category_sockets.append(s)
+                        category_sockets.append(s)
             sockets[category_hash] = category_sockets
         return sockets
 
@@ -535,14 +566,217 @@ class TreeStyleSubclassSchema(JSONSchema):
     active_tree = fields.Nested(TreeStyleSubclassTreeSchema)
 
 
+STASIS_ABILITIES_SOCKET_CATEGORY = 309722977
+VOID_ABILITIES_SOCKET_CATEGORY = 3218807805
+CLASS_ABILITY_SOCKET_TYPE_HASH = 298095187
+JUMP_ABILITY_SOCKET_TYPE_HASH = 4085037819
+MELEE_ABILITY_SOCKET_TYPE_HASH = 2130732440
+GRENADE_ABILITY_SOCKET_TYPE_HASH = 3486399913
+SUPER_SOCKET_CATEGORY = 457473665
+ASPECTS_SOCKET_CATEGORY = 2140934067
+FRAGMENTS_SOCKET_CATEGORY = 1313488945
+
+
+@dataclass
+class AspectSubclassAbility:
+    plug_hash: str
+    display_name: str
+    icon_path: str
+
+
+class AspectSubclassAbilitySchema(JSONSchema):
+    plug_hash = fields.Str()
+    display_name = fields.Str()
+    icon_path = fields.Str()
+
+
+@dataclass
+class AspectSubclassAspect:
+    plug_hash: str
+    display_name: str
+    icon_path: str
+    energy_type: EnergyType
+    energy_cost: int
+
+
+class AspectSubclassAspectSchema(JSONSchema):
+    plug_hash = fields.Str()
+    display_name = fields.Str()
+    icon_path = fields.Str()
+    energy_type = EnumField(EnergyType, by_value=True)
+    energy_cost = fields.Int()
+
+
+@dataclass
+class AspectSubclassAspectSocket:
+    display_name: str
+    icon_path: str
+    current_aspect: Optional[AspectSubclassAspect]
+
+
+class AspectSubclassAspectSocketSchema(JSONSchema):
+    display_name = fields.Str()
+    icon_path = fields.Str()
+    current_aspect: marshmallow_union.Union(
+        [fields.Nested(AspectSubclassAspectSchema), None]
+    )
+
+
+@dataclass
+class AspectSubclassFragment:
+    plug_hash: str
+    display_name: str
+    icon_path: str
+
+
+class AspectSubclassFragmentSchema(JSONSchema):
+    plug_hash = fields.Str()
+    display_name = fields.Str()
+    icon_path = fields.Str()
+
+
+@dataclass
+class AspectSubclassFragmentSocket:
+    display_name: str
+    icon_path: str
+    current_fragment: Optional[AspectSubclassFragment]
+
+
+class AspectSubclassFragmentSocketSchema(JSONSchema):
+    display_name = fields.Str()
+    icon_path = fields.Str()
+    current_fragment: marshmallow_union.Union(
+        [fields.Nested(AspectSubclassFragmentSchema), None]
+    )
+
+
+@dataclass
+class AspectSubclass(SocketedItem):
+    name: str
+    icon_path: str
+    damage_type: DamageType
+    item_hash: str
+    class_ability: AspectSubclassAbility
+    jump_ability: AspectSubclassAbility
+    melee_ability: AspectSubclassAbility
+    grenade_ability: AspectSubclassAbility
+    super_ability: AspectSubclassAbility
+    aspects: List[AspectSubclassAspectSocket]
+    fragments: List[AspectSubclassFragmentSocket]
+
+    socket_category_hashes = [
+        STASIS_ABILITIES_SOCKET_CATEGORY,
+        VOID_ABILITIES_SOCKET_CATEGORY,
+        SUPER_SOCKET_CATEGORY,
+        ASPECTS_SOCKET_CATEGORY,
+        FRAGMENTS_SOCKET_CATEGORY,
+    ]
+
+    @classmethod
+    def from_json(self, response, socket_response, inventory_item_defs):
+        item = inventory_item_defs[str(response["itemHash"])]
+        parsed_sockets = self.parse_sockets(
+            self, response["itemHash"], socket_response, inventory_item_defs
+        )
+
+        def socket_to_ability(socket):
+            return AspectSubclassAbility(
+                plug_hash=socket["current_plug"]["plug_hash"],
+                display_name=socket["current_plug"]["display_name"],
+                icon_path=socket["current_plug"]["icon_path"],
+            )
+
+        def socket_to_aspect(socket):
+            if socket["current_plug"] is None:
+                current = None
+            else:
+                current = AspectSubclassAspect(**socket["current_plug"])
+
+            return AspectSubclassAspectSocket(
+                display_name=socket["display_name"],
+                icon_path=socket["icon_path"],
+                current_aspect=current,
+            )
+
+        def socket_to_fragment(socket):
+            if socket["current_plug"] is None:
+                current = None
+            else:
+                current = AspectSubclassFragment(
+                    plug_hash=socket["current_plug"]["plug_hash"],
+                    display_name=socket["current_plug"]["display_name"],
+                    icon_path=socket["current_plug"]["icon_path"],
+                )
+            return AspectSubclassFragmentSocket(
+                display_name=socket["display_name"],
+                icon_path=socket["display_name"],
+                current_fragment=current,
+            )
+
+        # Get the abilities
+        # stasis subclass abilities and void subclass abilities have different category hashes unfortunately
+
+        ability_sockets = (
+            parsed_sockets[STASIS_ABILITIES_SOCKET_CATEGORY]
+            if len(parsed_sockets[STASIS_ABILITIES_SOCKET_CATEGORY]) > 0
+            else parsed_sockets[VOID_ABILITIES_SOCKET_CATEGORY]
+        )
+        for ability in ability_sockets:
+            if ability["socket_type"] == CLASS_ABILITY_SOCKET_TYPE_HASH:
+                class_ability = socket_to_ability(ability)
+            elif ability["socket_type"] == JUMP_ABILITY_SOCKET_TYPE_HASH:
+                jump_ability = socket_to_ability(ability)
+            elif ability["socket_type"] == MELEE_ABILITY_SOCKET_TYPE_HASH:
+                melee_ability = socket_to_ability(ability)
+            elif ability["socket_type"] == GRENADE_ABILITY_SOCKET_TYPE_HASH:
+                grenade_ability = socket_to_ability(ability)
+
+        super_ability = socket_to_ability(parsed_sockets[SUPER_SOCKET_CATEGORY][0])
+
+        aspects = [socket_to_aspect(a) for a in parsed_sockets[ASPECTS_SOCKET_CATEGORY]]
+        fragments = [
+            socket_to_fragment(f) for f in parsed_sockets[FRAGMENTS_SOCKET_CATEGORY]
+        ]
+
+        return AspectSubclass(
+            name=item["displayProperties"]["name"],
+            icon_path=full_icon_path(item["displayProperties"]["icon"]),
+            damage_type=DamageType(item["talentGrid"]["hudDamageType"]),
+            item_hash=str(response["itemHash"]),
+            class_ability=class_ability,
+            jump_ability=jump_ability,
+            melee_ability=melee_ability,
+            grenade_ability=grenade_ability,
+            super_ability=super_ability,
+            aspects=aspects,
+            fragments=fragments,
+        )
+
+
+class AspectSubclassSchema(JSONSchema):
+    name = fields.Str()
+    icon_path = fields.Str()
+    damage_type = EnumField(DamageType, by_value=True)
+    item_hash = fields.Str()
+    class_ability = fields.Nested(AspectSubclassAbilitySchema)
+    jump_ability = fields.Nested(AspectSubclassAbilitySchema)
+    melee_ability = fields.Nested(AspectSubclassAbilitySchema)
+    grenade_ability = fields.Nested(AspectSubclassAbilitySchema)
+    super_ability = fields.Nested(AspectSubclassAbilitySchema)
+    aspects = fields.List(fields.Nested(AspectSubclassAspectSocketSchema))
+    fragments = fields.List(fields.Nested(AspectSubclassFragmentSocketSchema))
+
+
 @dataclass
 class FullCharacterData:
     character: Character
     armor: List[ArmorPiece]
-    subclass: TreeStyleSubclass
+    subclass: Union[TreeStyleSubclass, AspectSubclass]
 
 
 class FullCharacterDataSchema(JSONSchema):
     character = fields.Nested(CharacterSchema)
     armor = fields.List(fields.Nested(ArmorPieceSchema))
-    subclass = fields.Nested(TreeStyleSubclassSchema)
+    subclass = marshmallow_union.Union(
+        [fields.Nested(TreeStyleSubclassSchema), fields.Nested(AspectSubclassSchema)]
+    )

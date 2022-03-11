@@ -595,16 +595,14 @@ class AspectSubclassAspect:
     plug_hash: str
     display_name: str
     icon_path: str
-    energy_type: EnergyType
-    energy_cost: int
+    fragment_slots: int
 
 
 class AspectSubclassAspectSchema(JSONSchema):
     plug_hash = fields.Str()
     display_name = fields.Str()
     icon_path = fields.Str()
-    energy_type = EnumField(EnergyType, by_value=True)
-    energy_cost = fields.Int()
+    fragment_slots = fields.Int()
 
 
 @dataclass
@@ -617,7 +615,7 @@ class AspectSubclassAspectSocket:
 class AspectSubclassAspectSocketSchema(JSONSchema):
     display_name = fields.Str()
     icon_path = fields.Str()
-    current_aspect: fields.Nested(AspectSubclassAspectSchema)
+    current_aspect = fields.Nested(AspectSubclassAspectSchema)
 
 
 @dataclass
@@ -643,7 +641,7 @@ class AspectSubclassFragmentSocket:
 class AspectSubclassFragmentSocketSchema(JSONSchema):
     display_name = fields.Str()
     icon_path = fields.Str()
-    current_fragment: fields.Nested(AspectSubclassFragmentSchema)
+    current_fragment = fields.Nested(AspectSubclassFragmentSchema)
 
 
 @dataclass
@@ -686,7 +684,12 @@ class AspectSubclass(SocketedItem):
             if socket["current_plug"] is None:
                 current = None
             else:
-                current = AspectSubclassAspect(**socket["current_plug"])
+                current = AspectSubclassAspect(
+                    plug_hash=socket["current_plug"]["plug_hash"],
+                    display_name=socket["current_plug"]["display_name"],
+                    icon_path=socket["current_plug"]["icon_path"],
+                    fragment_slots=socket["current_plug"]["energy_cost"],
+                )
 
             return AspectSubclassAspectSocket(
                 display_name=socket["display_name"],
@@ -711,7 +714,6 @@ class AspectSubclass(SocketedItem):
 
         # Get the abilities
         # stasis subclass abilities and void subclass abilities have different category hashes unfortunately
-
         ability_sockets = (
             parsed_sockets[STASIS_ABILITIES_SOCKET_CATEGORY]
             if len(parsed_sockets[STASIS_ABILITIES_SOCKET_CATEGORY]) > 0

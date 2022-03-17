@@ -5,12 +5,14 @@ from flask.json import jsonify
 from flask_cors import CORS
 from flask_session import Session
 from requests_oauthlib.oauth2_session import OAuth2Session
-from werkzeug.middleware.profiler import ProfilerMiddleware
 
 from api_server.database import db
 from api_server.destiny_api import DestinyAPI
 from api_server.models import CharacterSchema, FullCharacterDataSchema, User, UserSchema
 from api_server.repositories.user_repository import UserRepository
+
+# from werkzeug.middleware.profiler import ProfilerMiddleware
+
 
 sess = Session()
 

@@ -3,11 +3,13 @@ from dataclasses import dataclass
 from enum import Enum
 from importlib.metadata import metadata
 from itertools import groupby
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from marshmallow import Schema, fields
 from marshmallow_enum import EnumField
 from marshmallow_oneofschema import OneOfSchema
+
+from api_server.destiny_manifest import DestinyManifest
 
 
 def full_icon_path(path):
@@ -159,6 +161,7 @@ class PlugResponse:
     icon_path: str
     energy_type: EnergyType
     energy_cost: int
+    perks: List[Dict]
 
 
 class PlugResponseSchema(JSONSchema):
@@ -167,6 +170,7 @@ class PlugResponseSchema(JSONSchema):
     icon_path = fields.Str()
     energy_type = EnumField(EnergyType, by_value=True)
     energy_cost = fields.Int()
+    perks = fields.List(fields.Dict)
 
 
 @dataclass
@@ -222,6 +226,8 @@ class SocketedItem(ABC):
                                 "itemTypeDisplayName": "",
                                 "displayProperties": {"icon": ""},
                             }
+
+                        # TODO: why isn't this a SocketResponse object?
                         s = {
                             "socket_type": item_def_socket_entry["socketTypeHash"],
                             # TODO: this needs to be renamed initial_item_hash
@@ -242,38 +248,55 @@ class SocketedItem(ABC):
                         # need to get the current plug info always because the aspect subclasses have sockets for jump/super/etc that have
                         # initial items that are actual values instead of empty values. can change currentPlug to null further down the line
                         # depending on if you need to or not
-                        active_plug_item_def = inventory_item_defs[
-                            str(item_instance_socket["plugHash"])
-                        ]
-                        energy_stat = (
-                            [
-                                s
-                                for s in active_plug_item_def["investmentStats"]
-                                if s["statTypeHash"]
-                                in STAT_TYPE_HASH_ENERGY_TYPE_MAPPING.keys()
-                            ][0]
-                            if active_plug_item_def["investmentStats"]
-                            and len(active_plug_item_def["investmentStats"]) > 0
-                            else None
-                        )
-
-                        s["current_plug"] = {
-                            "plug_hash": item_instance_socket["plugHash"],
-                            "display_name": active_plug_item_def["displayProperties"][
-                                "name"
-                            ],
-                            "icon_path": full_icon_path(
-                                active_plug_item_def["displayProperties"]["icon"]
-                            ),
-                            "energy_cost": energy_stat["value"]
-                            if energy_stat
-                            else None,
-                            "energy_type": STAT_TYPE_HASH_ENERGY_TYPE_MAPPING[
-                                energy_stat["statTypeHash"]
+                        if "plugHash" in item_instance_socket:
+                            active_plug_item_def = inventory_item_defs[
+                                str(item_instance_socket["plugHash"])
                             ]
-                            if energy_stat
-                            else None,
-                        }
+                            energy_stat = (
+                                [
+                                    s
+                                    for s in active_plug_item_def["investmentStats"]
+                                    if s["statTypeHash"]
+                                    in STAT_TYPE_HASH_ENERGY_TYPE_MAPPING.keys()
+                                ][0]
+                                if active_plug_item_def["investmentStats"]
+                                and len(active_plug_item_def["investmentStats"]) > 0
+                                else None
+                            )
+                            sandbox_perk_defs = DestinyManifest().get_table(
+                                "DestinySandboxPerkDefinition"
+                            )
+                            perks = []
+                            for perk in active_plug_item_def["perks"]:
+                                perk_def = sandbox_perk_defs[str(perk["perkHash"])]
+                                if perk_def["isDisplayable"]:
+                                    perks.append(
+                                        {
+                                            "hash": perk["perkHash"],
+                                            "description": perk_def[
+                                                "displayProperties"
+                                            ]["description"],
+                                        }
+                                    )
+
+                            s["current_plug"] = {
+                                "plug_hash": item_instance_socket["plugHash"],
+                                "display_name": active_plug_item_def[
+                                    "displayProperties"
+                                ]["name"],
+                                "icon_path": full_icon_path(
+                                    active_plug_item_def["displayProperties"]["icon"]
+                                ),
+                                "energy_cost": energy_stat["value"]
+                                if energy_stat
+                                else None,
+                                "energy_type": STAT_TYPE_HASH_ENERGY_TYPE_MAPPING[
+                                    energy_stat["statTypeHash"]
+                                ]
+                                if energy_stat
+                                else None,
+                                "perks": perks,
+                            }
                         category_sockets.append(s)
             sockets[category_hash] = category_sockets
         return sockets
@@ -582,12 +605,14 @@ class AspectSubclassAbility:
     plug_hash: str
     display_name: str
     icon_path: str
+    description: str
 
 
 class AspectSubclassAbilitySchema(JSONSchema):
     plug_hash = fields.Str()
     display_name = fields.Str()
     icon_path = fields.Str()
+    description = fields.Str()
 
 
 @dataclass
@@ -596,6 +621,7 @@ class AspectSubclassAspect:
     display_name: str
     icon_path: str
     fragment_slots: int
+    perks: List[Dict]
 
 
 class AspectSubclassAspectSchema(JSONSchema):
@@ -603,6 +629,7 @@ class AspectSubclassAspectSchema(JSONSchema):
     display_name = fields.Str()
     icon_path = fields.Str()
     fragment_slots = fields.Int()
+    perks = fields.List(fields.Dict())
 
 
 @dataclass
@@ -623,12 +650,14 @@ class AspectSubclassFragment:
     plug_hash: str
     display_name: str
     icon_path: str
+    perks: List[Dict]
 
 
 class AspectSubclassFragmentSchema(JSONSchema):
     plug_hash = fields.Str()
     display_name = fields.Str()
     icon_path = fields.Str()
+    perks = fields.List(fields.Dict())
 
 
 @dataclass
@@ -674,21 +703,28 @@ class AspectSubclass(SocketedItem):
         )
 
         def socket_to_ability(socket):
+            plug_hash = socket["current_plug"]["plug_hash"]
+            ability_item_def = inventory_item_defs[str(plug_hash)]
             return AspectSubclassAbility(
-                plug_hash=socket["current_plug"]["plug_hash"],
+                plug_hash=plug_hash,
                 display_name=socket["current_plug"]["display_name"],
                 icon_path=socket["current_plug"]["icon_path"],
+                description=ability_item_def["displayProperties"]["description"],
             )
 
         def socket_to_aspect(socket):
             if socket["current_plug"] is None:
                 current = None
             else:
+                plug_hash = socket["current_plug"]["plug_hash"]
+                aspect_item_def = inventory_item_defs[str(plug_hash)]
+
                 current = AspectSubclassAspect(
                     plug_hash=socket["current_plug"]["plug_hash"],
                     display_name=socket["current_plug"]["display_name"],
                     icon_path=socket["current_plug"]["icon_path"],
                     fragment_slots=socket["current_plug"]["energy_cost"],
+                    perks=socket["current_plug"]["perks"],
                 )
 
             return AspectSubclassAspectSocket(
@@ -701,10 +737,14 @@ class AspectSubclass(SocketedItem):
             if socket["current_plug"] is None:
                 current = None
             else:
+                plug_hash = socket["current_plug"]["plug_hash"]
+                fragment_item_def = inventory_item_defs[str(plug_hash)]
+
                 current = AspectSubclassFragment(
                     plug_hash=socket["current_plug"]["plug_hash"],
                     display_name=socket["current_plug"]["display_name"],
                     icon_path=socket["current_plug"]["icon_path"],
+                    perks=socket["current_plug"]["perks"],
                 )
             return AspectSubclassFragmentSocket(
                 display_name=socket["display_name"],

@@ -328,6 +328,12 @@ class ArmorPiece(SocketedItem):
             inventory_item_defs,
         )
 
+        armor_mods = sockets[ARMOR_MOD_CATEGORY]
+
+        for socket in armor_mods:
+            if socket.current_plug.plug_hash == socket.socket_item_type_hash:
+                socket.current_plug = None
+
         return ArmorPiece(
             item_hash=response["itemHash"],
             item_instance_id=response["itemInstanceId"],
@@ -338,7 +344,7 @@ class ArmorPiece(SocketedItem):
             energy_type=EnergyType(instance["energy"]["energyType"]),
             energy_capacity=instance["energy"]["energyCapacity"],
             energy_used=instance["energy"]["energyUsed"],
-            mod_slots=sockets[ARMOR_MOD_CATEGORY],
+            mod_slots=armor_mods,
         )
 
 

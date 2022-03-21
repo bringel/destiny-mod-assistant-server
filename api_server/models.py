@@ -176,6 +176,7 @@ class PlugResponseSchema(JSONSchema):
 @dataclass
 class SocketResponse:
     display_name: str
+    socket_type: str
     icon_path: str
     plug_set_hash: str
     socket_item_type_hash: str
@@ -184,6 +185,7 @@ class SocketResponse:
 
 class SocketResponseSchema(JSONSchema):
     display_name = fields.Str()
+    socket_type: fields.Str()
     icon_path = fields.Str()
     plug_set_hash = fields.Str()
     socket_item_type_hash = fields.Str()
@@ -227,23 +229,21 @@ class SocketedItem(ABC):
                                 "displayProperties": {"icon": ""},
                             }
 
-                        # TODO: why isn't this a SocketResponse object?
-                        s = {
-                            "socket_type": item_def_socket_entry["socketTypeHash"],
-                            # TODO: this needs to be renamed initial_item_hash
-                            "socket_item_type_hash": item_def_socket_entry[
-                                "singleInitialItemHash"
-                            ],
-                            "display_name": socket_initial_item_def[
-                                "itemTypeDisplayName"
-                            ],
-                            "icon_path": full_icon_path(
+                        s = SocketResponse(
+                            display_name=socket_initial_item_def["itemTypeDisplayName"],
+                            socket_type=item_def_socket_entry["socketTypeHash"],
+                            icon_path=full_icon_path(
                                 socket_initial_item_def["displayProperties"]["icon"]
                             ),
-                            "plug_set_hash": item_def_socket_entry.get(
+                            plug_set_hash=item_def_socket_entry.get(
                                 "reusablePlugSetHash"
                             ),
-                        }
+                            # TODO: this needs to be renamed initial_item_hash
+                            socket_item_type_hash=item_def_socket_entry[
+                                "singleInitialItemHash"
+                            ],
+                            current_plug=None,
+                        )
 
                         # need to get the current plug info always because the aspect subclasses have sockets for jump/super/etc that have
                         # initial items that are actual values instead of empty values. can change currentPlug to null further down the line
@@ -279,24 +279,25 @@ class SocketedItem(ABC):
                                         }
                                     )
 
-                            s["current_plug"] = {
-                                "plug_hash": item_instance_socket["plugHash"],
-                                "display_name": active_plug_item_def[
-                                    "displayProperties"
-                                ]["name"],
-                                "icon_path": full_icon_path(
+                            s.current_plug = PlugResponse(
+                                plug_hash=item_instance_socket["plugHash"],
+                                display_name=active_plug_item_def["displayProperties"][
+                                    "name"
+                                ],
+                                icon_path=full_icon_path(
                                     active_plug_item_def["displayProperties"]["icon"]
                                 ),
-                                "energy_cost": energy_stat["value"]
+                                energy_cost=energy_stat["value"]
                                 if energy_stat
                                 else None,
-                                "energy_type": STAT_TYPE_HASH_ENERGY_TYPE_MAPPING[
+                                energy_type=STAT_TYPE_HASH_ENERGY_TYPE_MAPPING[
                                     energy_stat["statTypeHash"]
                                 ]
                                 if energy_stat
                                 else None,
-                                "perks": perks,
-                            }
+                                perks=perks,
+                            )
+
                         category_sockets.append(s)
             sockets[category_hash] = category_sockets
         return sockets
@@ -703,52 +704,52 @@ class AspectSubclass(SocketedItem):
         )
 
         def socket_to_ability(socket):
-            plug_hash = socket["current_plug"]["plug_hash"]
+            plug_hash = socket.current_plug.plug_hash
             ability_item_def = inventory_item_defs[str(plug_hash)]
             return AspectSubclassAbility(
                 plug_hash=plug_hash,
-                display_name=socket["current_plug"]["display_name"],
-                icon_path=socket["current_plug"]["icon_path"],
+                display_name=socket.current_plug.display_name,
+                icon_path=socket.current_plug.icon_path,
                 description=ability_item_def["displayProperties"]["description"],
             )
 
         def socket_to_aspect(socket):
-            if socket["current_plug"] is None:
+            if socket.current_plug is None:
                 current = None
             else:
-                plug_hash = socket["current_plug"]["plug_hash"]
+                plug_hash = socket.current_plug.plug_hash
                 aspect_item_def = inventory_item_defs[str(plug_hash)]
 
                 current = AspectSubclassAspect(
-                    plug_hash=socket["current_plug"]["plug_hash"],
-                    display_name=socket["current_plug"]["display_name"],
-                    icon_path=socket["current_plug"]["icon_path"],
-                    fragment_slots=socket["current_plug"]["energy_cost"],
-                    perks=socket["current_plug"]["perks"],
+                    plug_hash=socket.current_plug.plug_hash,
+                    display_name=socket.current_plug.display_name,
+                    icon_path=socket.current_plug.icon_path,
+                    fragment_slots=socket.current_plug.energy_cost,
+                    perks=socket.current_plug.perks,
                 )
 
             return AspectSubclassAspectSocket(
-                display_name=socket["display_name"],
-                icon_path=socket["icon_path"],
+                display_name=socket.display_name,
+                icon_path=socket.icon_path,
                 current_aspect=current,
             )
 
         def socket_to_fragment(socket):
-            if socket["current_plug"] is None:
+            if socket.current_plug is None:
                 current = None
             else:
-                plug_hash = socket["current_plug"]["plug_hash"]
+                plug_hash = socket.current_plug.plug_hash
                 fragment_item_def = inventory_item_defs[str(plug_hash)]
 
                 current = AspectSubclassFragment(
-                    plug_hash=socket["current_plug"]["plug_hash"],
-                    display_name=socket["current_plug"]["display_name"],
-                    icon_path=socket["current_plug"]["icon_path"],
-                    perks=socket["current_plug"]["perks"],
+                    plug_hash=socket.current_plug.plug_hash,
+                    display_name=socket.current_plug.display_name,
+                    icon_path=socket.current_plug.icon_path,
+                    perks=socket.current_plug.perks,
                 )
             return AspectSubclassFragmentSocket(
-                display_name=socket["display_name"],
-                icon_path=socket["display_name"],
+                display_name=socket.display_name,
+                icon_path=socket.display_name,
                 current_fragment=current,
             )
 
@@ -760,13 +761,13 @@ class AspectSubclass(SocketedItem):
             else parsed_sockets[VOID_ABILITIES_SOCKET_CATEGORY]
         )
         for ability in ability_sockets:
-            if ability["socket_type"] == CLASS_ABILITY_SOCKET_TYPE_HASH:
+            if ability.socket_type == CLASS_ABILITY_SOCKET_TYPE_HASH:
                 class_ability = socket_to_ability(ability)
-            elif ability["socket_type"] == JUMP_ABILITY_SOCKET_TYPE_HASH:
+            elif ability.socket_type == JUMP_ABILITY_SOCKET_TYPE_HASH:
                 jump_ability = socket_to_ability(ability)
-            elif ability["socket_type"] == MELEE_ABILITY_SOCKET_TYPE_HASH:
+            elif ability.socket_type == MELEE_ABILITY_SOCKET_TYPE_HASH:
                 melee_ability = socket_to_ability(ability)
-            elif ability["socket_type"] == GRENADE_ABILITY_SOCKET_TYPE_HASH:
+            elif ability.socket_type == GRENADE_ABILITY_SOCKET_TYPE_HASH:
                 grenade_ability = socket_to_ability(ability)
 
         super_ability = socket_to_ability(parsed_sockets[SUPER_SOCKET_CATEGORY][0])

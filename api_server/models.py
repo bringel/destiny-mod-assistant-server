@@ -69,7 +69,7 @@ class UserSchema(JSONSchema):
 
 @dataclass
 class Character:
-    character_id: int
+    character_id: str
     character_class: str
     gender_and_race_description: str
     date_last_played: str
@@ -94,7 +94,7 @@ class Character:
 
 
 class CharacterSchema(JSONSchema):
-    character_id = fields.Int()
+    character_id = fields.Str()
     character_class = fields.Str()
     gender_and_race_description = fields.Str()
     date_last_played = fields.Str()

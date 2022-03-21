@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 from importlib.metadata import metadata
 from itertools import groupby
+from pydoc import describe
 from typing import Dict, List, Optional, Union
 
 from marshmallow import Schema, fields
@@ -152,6 +153,18 @@ STAT_TYPE_HASH_ENERGY_TYPE_MAPPING = {
     119204074: EnergyType.Fragment,
 }
 
+
+@dataclass
+class PerkResponse:
+    hash: str
+    description: str
+
+
+class PerkResponseSchema(JSONSchema):
+    hash = fields.Str()
+    description = fields.Str()
+
+
 # The SocketResponse and PlugResponse classes are returned from the SocketedItem base class and can be returned directly
 # or transformed into somethng else if more custom fields are needed
 @dataclass
@@ -161,7 +174,7 @@ class PlugResponse:
     icon_path: str
     energy_type: EnergyType
     energy_cost: int
-    perks: List[Dict]
+    perks: List[PerkResponse]
 
 
 class PlugResponseSchema(JSONSchema):
@@ -170,7 +183,7 @@ class PlugResponseSchema(JSONSchema):
     icon_path = fields.Str()
     energy_type = EnumField(EnergyType, by_value=True)
     energy_cost = fields.Int()
-    perks = fields.List(fields.Dict)
+    perks = fields.List(fields.Nested(PerkResponseSchema))
 
 
 @dataclass
@@ -271,12 +284,12 @@ class SocketedItem(ABC):
                                 perk_def = sandbox_perk_defs[str(perk["perkHash"])]
                                 if perk_def["isDisplayable"]:
                                     perks.append(
-                                        {
-                                            "hash": perk["perkHash"],
-                                            "description": perk_def[
-                                                "displayProperties"
-                                            ]["description"],
-                                        }
+                                        PerkResponse(
+                                            hash=perk["perkHash"],
+                                            description=perk_def["displayProperties"][
+                                                "description"
+                                            ],
+                                        )
                                     )
 
                             s.current_plug = PlugResponse(
@@ -628,7 +641,7 @@ class AspectSubclassAspect:
     display_name: str
     icon_path: str
     fragment_slots: int
-    perks: List[Dict]
+    perks: List[PerkResponse]
 
 
 class AspectSubclassAspectSchema(JSONSchema):
@@ -636,7 +649,7 @@ class AspectSubclassAspectSchema(JSONSchema):
     display_name = fields.Str()
     icon_path = fields.Str()
     fragment_slots = fields.Int()
-    perks = fields.List(fields.Dict())
+    perks = fields.List(fields.Nested(PerkResponseSchema))
 
 
 @dataclass
@@ -657,14 +670,14 @@ class AspectSubclassFragment:
     plug_hash: str
     display_name: str
     icon_path: str
-    perks: List[Dict]
+    perks: List[PerkResponse]
 
 
 class AspectSubclassFragmentSchema(JSONSchema):
     plug_hash = fields.Str()
     display_name = fields.Str()
     icon_path = fields.Str()
-    perks = fields.List(fields.Dict())
+    perks = fields.List(fields.Nested(PerkResponseSchema))
 
 
 @dataclass

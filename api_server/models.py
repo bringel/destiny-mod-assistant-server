@@ -75,6 +75,7 @@ class Character:
     gender_and_race_description: str
     date_last_played: str
     light: int
+    emblem_path: str
     emblem_background_path: str
 
     @classmethod
@@ -90,7 +91,8 @@ class Character:
             ],
             date_last_played=response.get("dateLastPlayed"),
             light=response.get("light"),
-            emblem_background_path=f'https://bungie.net{response.get("emblemBackgroundPath")}',
+            emblem_path=full_icon_path(response.get("emblemPath")),
+            emblem_background_path=full_icon_path(response.get("emblemBackgroundPath")),
         )
 
 
@@ -100,6 +102,7 @@ class CharacterSchema(JSONSchema):
     gender_and_race_description = fields.Str()
     date_last_played = fields.Str()
     light = fields.Int()
+    emblem_path = fields.Str()
     emblem_background_path = fields.Str()
 
 
@@ -376,13 +379,13 @@ class ArmorPieceSchema(JSONSchema):
 
 @dataclass
 class TreeStyleSubclassPerk:
-    name: str
+    display_name: str
     icon_path: str
     description: str
 
 
 class TreeStyleSubclassPerkSchema(JSONSchema):
-    name = fields.Str()
+    display_name = fields.Str()
     icon_path = fields.Str()
     description = fields.Str()
 
@@ -432,6 +435,7 @@ class TreeStyleSubclass:
     active_class_ability: TreeStyleSubclassPerk
     active_movement_ability: TreeStyleSubclassPerk
     active_grenade_ability: TreeStyleSubclassPerk
+    active_super_ability: TreeStyleSubclassPerk
     active_tree: TreeStyleSubclassTree
 
     @classmethod
@@ -469,6 +473,12 @@ class TreeStyleSubclass:
             n for n in talent_grid_nodes if n.get("groupHash") in GRENADE_GROUP_HASHES
         ][0]
 
+        super_ability_node = [
+            n
+            for n in talent_grid_nodes
+            if n.get("nodeStyleIdentifier") == "specialization_super"
+        ][0]
+
         active_tree_nodes = [
             n
             for n in talent_grid_nodes
@@ -480,7 +490,7 @@ class TreeStyleSubclass:
             return node["steps"][0]["displayProperties"]
 
         active_class_ability = TreeStyleSubclassPerk(
-            name=get_step_display_properties(class_ability_node)["name"],
+            display_name=get_step_display_properties(class_ability_node)["name"],
             description=get_step_display_properties(class_ability_node)["description"],
             icon_path=full_icon_path(
                 get_step_display_properties(class_ability_node)["icon"]
@@ -488,7 +498,7 @@ class TreeStyleSubclass:
         )
 
         active_movement_ability = TreeStyleSubclassPerk(
-            name=get_step_display_properties(movement_ability_node)["name"],
+            display_name=get_step_display_properties(movement_ability_node)["name"],
             description=get_step_display_properties(movement_ability_node)[
                 "description"
             ],
@@ -498,12 +508,20 @@ class TreeStyleSubclass:
         )
 
         active_grenade_ability = TreeStyleSubclassPerk(
-            name=get_step_display_properties(grenade_ability_node)["name"],
+            display_name=get_step_display_properties(grenade_ability_node)["name"],
             description=get_step_display_properties(grenade_ability_node)[
                 "description"
             ],
             icon_path=full_icon_path(
                 get_step_display_properties(grenade_ability_node)["icon"]
+            ),
+        )
+
+        active_super_ability = TreeStyleSubclassPerk(
+            display_name=get_step_display_properties(super_ability_node)["name"],
+            description=get_step_display_properties(super_ability_node)["description"],
+            icon_path=full_icon_path(
+                get_step_display_properties(super_ability_node)["icon"]
             ),
         )
 
@@ -555,28 +573,28 @@ class TreeStyleSubclass:
             icon_path=full_icon_path(tree_node_category["displayProperties"]["icon"]),
             tree_path_type=tree_path_type,
             left_perk=TreeStyleSubclassPerk(
-                name=get_step_display_properties(tree_left_perk)["name"],
+                display_name=get_step_display_properties(tree_left_perk)["name"],
                 icon_path=full_icon_path(
                     get_step_display_properties(tree_left_perk)["icon"]
                 ),
                 description=get_step_display_properties(tree_left_perk)["description"],
             ),
             top_perk=TreeStyleSubclassPerk(
-                name=get_step_display_properties(tree_top_perk)["name"],
+                display_name=get_step_display_properties(tree_top_perk)["name"],
                 icon_path=full_icon_path(
                     get_step_display_properties(tree_top_perk)["icon"]
                 ),
                 description=get_step_display_properties(tree_top_perk)["description"],
             ),
             right_perk=TreeStyleSubclassPerk(
-                name=get_step_display_properties(tree_right_perk)["name"],
+                display_name=get_step_display_properties(tree_right_perk)["name"],
                 icon_path=full_icon_path(
                     get_step_display_properties(tree_right_perk)["icon"]
                 ),
                 description=get_step_display_properties(tree_right_perk)["description"],
             ),
             bottom_perk=TreeStyleSubclassPerk(
-                name=get_step_display_properties(tree_bottom_perk)["name"],
+                display_name=get_step_display_properties(tree_bottom_perk)["name"],
                 icon_path=full_icon_path(
                     get_step_display_properties(tree_bottom_perk)["icon"]
                 ),
@@ -594,6 +612,7 @@ class TreeStyleSubclass:
             active_class_ability=active_class_ability,
             active_movement_ability=active_movement_ability,
             active_grenade_ability=active_grenade_ability,
+            active_super_ability=active_super_ability,
             active_tree=active_tree,
         )
 
@@ -606,6 +625,7 @@ class TreeStyleSubclassSchema(JSONSchema):
     active_class_ability = fields.Nested(TreeStyleSubclassPerkSchema)
     active_movement_ability = fields.Nested(TreeStyleSubclassPerkSchema)
     active_grenade_ability = fields.Nested(TreeStyleSubclassPerkSchema)
+    active_super_ability = fields.Nested(TreeStyleSubclassPerkSchema)
     active_tree = fields.Nested(TreeStyleSubclassTreeSchema)
 
 
@@ -699,11 +719,11 @@ class AspectSubclass(SocketedItem):
     icon_path: str
     damage_type: DamageType
     item_hash: str
-    class_ability: AspectSubclassAbility
-    jump_ability: AspectSubclassAbility
-    melee_ability: AspectSubclassAbility
-    grenade_ability: AspectSubclassAbility
-    super_ability: AspectSubclassAbility
+    active_class_ability: AspectSubclassAbility
+    active_movement_ability: AspectSubclassAbility
+    active_melee_ability: AspectSubclassAbility
+    active_grenade_ability: AspectSubclassAbility
+    active_super_ability: AspectSubclassAbility
     aspects: List[AspectSubclassAspectSocket]
     fragments: List[AspectSubclassFragmentSocket]
 
@@ -737,7 +757,6 @@ class AspectSubclass(SocketedItem):
                 current = None
             else:
                 plug_hash = socket.current_plug.plug_hash
-                aspect_item_def = inventory_item_defs[str(plug_hash)]
 
                 current = AspectSubclassAspect(
                     plug_hash=socket.current_plug.plug_hash,
@@ -758,7 +777,6 @@ class AspectSubclass(SocketedItem):
                 current = None
             else:
                 plug_hash = socket.current_plug.plug_hash
-                fragment_item_def = inventory_item_defs[str(plug_hash)]
 
                 current = AspectSubclassFragment(
                     plug_hash=socket.current_plug.plug_hash,
@@ -783,7 +801,7 @@ class AspectSubclass(SocketedItem):
             if ability.socket_type == CLASS_ABILITY_SOCKET_TYPE_HASH:
                 class_ability = socket_to_ability(ability)
             elif ability.socket_type == JUMP_ABILITY_SOCKET_TYPE_HASH:
-                jump_ability = socket_to_ability(ability)
+                movement_ability = socket_to_ability(ability)
             elif ability.socket_type == MELEE_ABILITY_SOCKET_TYPE_HASH:
                 melee_ability = socket_to_ability(ability)
             elif ability.socket_type == GRENADE_ABILITY_SOCKET_TYPE_HASH:
@@ -801,11 +819,11 @@ class AspectSubclass(SocketedItem):
             icon_path=full_icon_path(item["displayProperties"]["icon"]),
             damage_type=DamageType(item["talentGrid"]["hudDamageType"]),
             item_hash=str(response["itemHash"]),
-            class_ability=class_ability,
-            jump_ability=jump_ability,
-            melee_ability=melee_ability,
-            grenade_ability=grenade_ability,
-            super_ability=super_ability,
+            active_class_ability=class_ability,
+            active_movement_ability=movement_ability,
+            active_melee_ability=melee_ability,
+            active_grenade_ability=grenade_ability,
+            active_super_ability=super_ability,
             aspects=aspects,
             fragments=fragments,
         )
@@ -816,11 +834,11 @@ class AspectSubclassSchema(JSONSchema):
     icon_path = fields.Str()
     damage_type = EnumField(DamageType, by_value=True)
     item_hash = fields.Str()
-    class_ability = fields.Nested(AspectSubclassAbilitySchema)
-    jump_ability = fields.Nested(AspectSubclassAbilitySchema)
-    melee_ability = fields.Nested(AspectSubclassAbilitySchema)
-    grenade_ability = fields.Nested(AspectSubclassAbilitySchema)
-    super_ability = fields.Nested(AspectSubclassAbilitySchema)
+    active_class_ability = fields.Nested(AspectSubclassAbilitySchema)
+    active_movement_ability = fields.Nested(AspectSubclassAbilitySchema)
+    active_melee_ability = fields.Nested(AspectSubclassAbilitySchema)
+    active_grenade_ability = fields.Nested(AspectSubclassAbilitySchema)
+    active_super_ability = fields.Nested(AspectSubclassAbilitySchema)
     aspects = fields.List(fields.Nested(AspectSubclassAspectSocketSchema))
     fragments = fields.List(fields.Nested(AspectSubclassFragmentSocketSchema))
 

@@ -195,7 +195,7 @@ class SocketResponse:
     socket_type: str
     icon_path: str
     plug_set_hash: str
-    socket_item_type_hash: str
+    initial_item_hash: str
     current_plug: Union[PlugResponse, None]
 
 
@@ -204,7 +204,7 @@ class SocketResponseSchema(JSONSchema):
     socket_type: fields.Str()
     icon_path = fields.Str()
     plug_set_hash = fields.Str()
-    socket_item_type_hash = fields.Str()
+    initial_item_hash = fields.Str()
     current_plug = fields.Nested(PlugResponseSchema)
 
 
@@ -240,6 +240,7 @@ class SocketedItem(ABC):
                                 str(socket_intitial_item_def_hash)
                             ]
                         except:
+                            # For some reason the melee ability in void 3.0 subclasses doesn't exist in item defs and will throw
                             socket_initial_item_def = {
                                 "itemTypeDisplayName": "",
                                 "displayProperties": {"icon": ""},
@@ -254,8 +255,7 @@ class SocketedItem(ABC):
                             plug_set_hash=item_def_socket_entry.get(
                                 "reusablePlugSetHash"
                             ),
-                            # TODO: this needs to be renamed initial_item_hash
-                            socket_item_type_hash=item_def_socket_entry[
+                            initial_item_hash=item_def_socket_entry[
                                 "singleInitialItemHash"
                             ],
                             current_plug=None,
@@ -347,7 +347,7 @@ class ArmorPiece(SocketedItem):
         armor_mods = sockets[ARMOR_MOD_CATEGORY]
 
         for socket in armor_mods:
-            if socket.current_plug.plug_hash == socket.socket_item_type_hash:
+            if socket.current_plug.plug_hash == socket.initial_item_hash:
                 socket.current_plug = None
 
         return ArmorPiece(
@@ -753,7 +753,10 @@ class AspectSubclass(SocketedItem):
             )
 
         def socket_to_aspect(socket):
-            if socket.current_plug is None:
+            if (socket.current_plug is None) or (
+                socket.current_plug is not None
+                and socket.current_plug.plug_hash == socket.initial_item_hash
+            ):
                 current = None
             else:
                 plug_hash = socket.current_plug.plug_hash
@@ -773,9 +776,10 @@ class AspectSubclass(SocketedItem):
             )
 
         def socket_to_fragment(socket):
-            if socket.current_plug is None:
-                current = None
-            elif socket.current_plug.plug_hash == socket.socket_item_type_hash:
+            if (socket.current_plug is None) or (
+                socket.current_plug is not None
+                and socket.current_plug.plug_hash == socket.initial_item_hash
+            ):
                 current = None
             else:
                 plug_hash = socket.current_plug.plug_hash

@@ -817,9 +817,7 @@ class AspectSubclass(SocketedItem):
 
         aspects = [socket_to_aspect(a) for a in parsed_sockets[ASPECTS_SOCKET_CATEGORY]]
 
-        get_fragment_slot_count = (
-            lambda a: a.current_aspect.fragment_slots if a.current_aspect != None else 0
-        )
+        get_fragment_slot_count = lambda a: a.current_aspect.fragment_slots or 0
         fragment_slot_count = sum([get_fragment_slot_count(a) for a in aspects])
 
         fragments = [
@@ -831,6 +829,8 @@ class AspectSubclass(SocketedItem):
         if len(filled_fragment_slots) < fragment_slot_count:
             needed_slots = fragment_slot_count - filled_fragment_slots
             fragments = filled_fragment_slots + empty_fragment_slots[0:needed_slots]
+        elif len(filled_fragment_slots) > fragment_slot_count:
+            fragments = filled_fragment_slots[0:fragment_slot_count]
         else:
             fragments = filled_fragment_slots
 

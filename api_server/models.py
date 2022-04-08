@@ -775,6 +775,8 @@ class AspectSubclass(SocketedItem):
         def socket_to_fragment(socket):
             if socket.current_plug is None:
                 current = None
+            elif socket.current_plug.plug_hash == socket.socket_item_type_hash:
+                current = None
             else:
                 plug_hash = socket.current_plug.plug_hash
 
@@ -810,9 +812,23 @@ class AspectSubclass(SocketedItem):
         super_ability = socket_to_ability(parsed_sockets[SUPER_SOCKET_CATEGORY][0])
 
         aspects = [socket_to_aspect(a) for a in parsed_sockets[ASPECTS_SOCKET_CATEGORY]]
+
+        get_fragment_slot_count = (
+            lambda a: a.current_aspect.fragment_slots if a.current_aspect != None else 0
+        )
+        fragment_slot_count = sum([get_fragment_slot_count(a) for a in aspects])
+
         fragments = [
             socket_to_fragment(f) for f in parsed_sockets[FRAGMENTS_SOCKET_CATEGORY]
         ]
+        empty_fragment_slots = [f for f in fragments if f.current_fragment == None]
+        filled_fragment_slots = [f for f in fragments if f.current_fragment != None]
+
+        if len(filled_fragment_slots) < fragment_slot_count:
+            needed_slots = fragment_slot_count - filled_fragment_slots
+            fragments = filled_fragment_slots + empty_fragment_slots[0:needed_slots]
+        else:
+            fragments = filled_fragment_slots
 
         return AspectSubclass(
             name=item["displayProperties"]["name"],
